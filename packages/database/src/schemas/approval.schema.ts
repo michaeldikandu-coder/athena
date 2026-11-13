@@ -90,6 +90,7 @@ export const ApprovalSchema = new Schema<IApproval>(
   {
     timestamps: true,
     collection: 'approvals',
+    minimize: false,
   }
 );
 
@@ -97,4 +98,3 @@ export const ApprovalSchema = new Schema<IApproval>(
 ApprovalSchema.index({ status: 1, requestedAt: -1 });
 ApprovalSchema.index({ executionId: 1, status: 1 });
 ApprovalSchema.index({ reviewerId: 1, reviewedAt: -1 });
-ApprovalSchema.index({ expiresAt: 1 });

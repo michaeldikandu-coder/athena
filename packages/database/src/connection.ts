@@ -53,12 +53,6 @@ export class DatabaseConnection {
       console.log('MongoDB disconnected');
       this.isConnected = false;
     });
-
-    // Graceful shutdown
-    process.on('SIGINT', async () => {
-      await this.disconnect();
-      process.exit(0);
-    });
   }
 
   async connect(): Promise<typeof mongoose> {

@@ -37,17 +37,16 @@ export const MemorySchema = new Schema<IMemory>(
     },
     expiresAt: {
       type: Date,
-      index: true,
     },
   },
   {
     timestamps: true,
     collection: 'memories',
+    minimize: false,
   }
 );
 
 // Indexes
 MemorySchema.index({ agentId: 1, type: 1, createdAt: -1 });
-MemorySchema.index({ executionId: 1 });
 MemorySchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // TTL index
-MemorySchema.index({ 'metadata.customerId': 1 }); // Example metadata index
+MemorySchema.index({ agentId: 1, 'metadata.key': 1 });

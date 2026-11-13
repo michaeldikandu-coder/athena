@@ -35,10 +35,10 @@ const WorkflowTriggerSchema = new Schema<IWorkflowTrigger>(
     },
     config: {
       type: Schema.Types.Mixed,
-      required: true,
+      default: () => ({}),
     },
   },
-  { _id: false }
+  { _id: false, minimize: false }
 );
 
 const WorkflowStepSchema = new Schema<IWorkflowStep>(
@@ -58,9 +58,10 @@ const WorkflowStepSchema = new Schema<IWorkflowStep>(
     },
     nextSteps: {
       type: [String],
+      default: undefined,
     },
   },
-  { _id: false }
+  { _id: false, minimize: false }
 );
 
 export const WorkflowSchema = new Schema<IWorkflow>(
@@ -73,7 +74,7 @@ export const WorkflowSchema = new Schema<IWorkflow>(
     },
     description: {
       type: String,
-      required: true,
+      default: '',
     },
     agentId: {
       type: String,
@@ -110,10 +111,10 @@ export const WorkflowSchema = new Schema<IWorkflow>(
   {
     timestamps: true,
     collection: 'workflows',
+    minimize: false,
   }
 );
 
 // Indexes
 WorkflowSchema.index({ agentId: 1, status: 1 });
-WorkflowSchema.index({ userId: 1 });
 WorkflowSchema.index({ 'trigger.type': 1 });

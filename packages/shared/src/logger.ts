@@ -37,20 +37,20 @@ class Logger {
     return parts.join(' ');
   }
 
-  private sanitizeMeta(meta: LogMeta): LogMeta {
-    const sanitized: LogMeta = {};
-    const sensitiveKeys = ['password', 'token', 'secret', 'apiKey', 'authorization'];
+  private sanitizeMeta(meta: unknown, depth = 0): any {
+    if (depth > 6) return '[depth limit]';
+    if (Array.isArray(meta)) return meta.map((item) => this.sanitizeMeta(item, depth + 1));
+    if (!meta || typeof meta !== 'object' || meta instanceof Date) return meta;
 
+    const sanitized: LogMeta = {};
+    const sensitiveKeys = ['password', 'token', 'secret', 'apikey', 'authorization', 'cookie'];
     for (const [key, value] of Object.entries(meta)) {
       if (sensitiveKeys.some((k) => key.toLowerCase().includes(k))) {
         sanitized[key] = '***REDACTED***';
-      } else if (value && typeof value === 'object') {
-        sanitized[key] = this.sanitizeMeta(value);
       } else {
-        sanitized[key] = value;
+        sanitized[key] = this.sanitizeMeta(value, depth + 1);
       }
     }
-
     return sanitized;
   }
 

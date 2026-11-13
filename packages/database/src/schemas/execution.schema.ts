@@ -38,10 +38,10 @@ const ExecutionTriggerSchema = new Schema<IExecutionTrigger>(
     },
     payload: {
       type: Schema.Types.Mixed,
-      required: true,
+      default: () => ({}),
     },
   },
-  { _id: false }
+  { _id: false, minimize: false }
 );
 
 export const ExecutionSchema = new Schema<IExecution>(
@@ -112,6 +112,7 @@ export const ExecutionSchema = new Schema<IExecution>(
   {
     timestamps: true,
     collection: 'executions',
+    minimize: false,
   }
 );
 

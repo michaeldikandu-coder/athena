@@ -60,6 +60,7 @@ export const ExecutionEventSchema = new Schema<IExecutionEvent>(
   {
     timestamps: { createdAt: true, updatedAt: false },
     collection: 'execution_events',
+    minimize: false,
   }
 );
 

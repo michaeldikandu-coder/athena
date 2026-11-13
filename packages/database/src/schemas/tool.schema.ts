@@ -67,6 +67,4 @@ export const ToolSchema = new Schema<ITool>(
 );
 
 // Indexes
-ToolSchema.index({ name: 1 }, { unique: true });
 ToolSchema.index({ category: 1, permissionLevel: 1 });
-ToolSchema.index({ isSystem: 1 });

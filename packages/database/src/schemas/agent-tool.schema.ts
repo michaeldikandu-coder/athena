@@ -38,4 +38,3 @@ export const AgentToolSchema = new Schema<IAgentTool>(
 // Indexes
 AgentToolSchema.index({ agentId: 1, toolId: 1 }, { unique: true });
 AgentToolSchema.index({ agentId: 1, enabled: 1 });
-AgentToolSchema.index({ toolId: 1 });
