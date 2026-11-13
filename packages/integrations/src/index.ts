@@ -5,7 +5,7 @@ export type { RestClientOptions, RestRequest } from './rest/rest-client';
 // Webhooks
 export {
   verifyHmacSignature,
-  verifyStripeSignature,
+  verifyBachsSignature,
   verifyGithubSignature,
   hmacSha256Hex,
 } from './webhooks/signature';
@@ -20,7 +20,21 @@ export {
 export type { FieldMapping, NormalizeOptions } from './legacy/normalize';
 
 // Connectors
-export { stripe, isStripeConfigured, formatAmount } from './connectors/stripe';
-export type { StripeList } from './connectors/stripe';
+export {
+  bachs,
+  bachsEnvironment,
+  isBachsConfigured,
+  formatMoney,
+  maskTail,
+} from './connectors/bachs';
+export type {
+  BachsPayment,
+  BachsPaymentListItem,
+  BachsList,
+  BachsCustomer,
+  BachsRefund,
+  BachsDispute,
+  BachsStatusChange,
+} from './connectors/bachs';
 export { github, resolveRepo, isGithubConfigured } from './connectors/github';
 export { postSlackMessage, sendNotificationTool } from './connectors/slack';

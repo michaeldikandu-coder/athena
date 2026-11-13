@@ -2,8 +2,8 @@
 
 ## Before the demo
 
-- API and dashboard running with an LLM key, a Stripe test key, a GitHub token + repo, a Slack webhook, and `OPSGUARD_SERVICES` including one service that is down (for example a stopped staging URL).
-- Create test charges in Stripe so MoneyGuard has data. A failed, high-risk one: in test mode, pay with card `4100000000000019` (always blocked as fraud) and a normal one with `4242424242424242`.
+- API and dashboard running with an LLM key, a Bachs sandbox key (`sk_sandbox_...`), a GitHub token + repo, a Slack webhook, and `OPSGUARD_SERVICES` including one service that is down (for example a stopped staging URL).
+- Create sandbox payments in Bachs so MoneyGuard has data: a few hosted checkouts paid by the same customer email, including at least one failed attempt (the sandbox lets you force outcomes). Run `bachs listen --forward-to localhost:3001/api/webhooks/bachs` during the demo.
 - At least one failed GitHub Actions run in the repo.
 - Both applications installed. Keep the Approvals page open in a second tab.
 
@@ -21,11 +21,11 @@ Open the **Tool Registry**: each tool has a JSON schema (sent to the LLM), a ris
 
 ## 3. MoneyGuard (3 min)
 
-**MoneyGuard** page lists live Stripe charges with Radar risk. Click **Investigate** on the blocked charge.
+**MoneyGuard** page lists live Bachs payments (sandbox badge shown). Click **Investigate** on the failed payment.
 
-On the execution page, narrate the live timeline: agent reasoning, `get_transaction_details`, `get_customer_profile`, `check_risk_rules` (evidence per rule), `create_case`. The agent then asks to `flag_transaction`, and the execution waits for approval.
+On the execution page, narrate the live timeline: agent reasoning, `get_transaction_details` (status history, payer details), `get_customer_profile` and `search_transaction_history` (found by email), `check_risk_rules` (evidence per rule, per-currency threshold), `create_case`. The agent then asks to `flag_customer`, and the execution waits for approval.
 
-Approve it in the card at the top. The run resumes, writes metadata to the real Stripe charge, and sends the Slack notification. Show the case on the MoneyGuard page and the `moneyguard_flag` badge on the charge.
+Approve it in the card at the top. The run resumes, writes the MoneyGuard flag to the customer's metadata in Bachs, and sends the Slack notification. Show the case on the MoneyGuard page and the customer metadata in the Bachs dashboard.
 
 Optional: run again and **reject** a refund request with a comment, and show the agent acknowledging the rejection in its final report.
 
@@ -39,7 +39,7 @@ Optional: run again and **reject** a refund request with a comment, and show the
 
 Timeline: `get_system_status`, `check_service_health`, `list_workflow_runs` / `get_workflow_run` (finds the failed step), `search_tickets`, `create_ticket` (a real GitHub issue; open it), `send_notification`. If the failure looks transient, the agent requests `rerun_failed_jobs`, which goes through the same approval queue as MoneyGuard refunds.
 
-Show an automatic trigger: re-run a failing GitHub Action, or `stripe trigger charge.failed`. A new execution appears without anyone clicking.
+Show an automatic trigger: re-run a failing GitHub Action, or `bachs trigger collection.failed`. A new execution appears without anyone clicking.
 
 ## 6. Close (30s)
 

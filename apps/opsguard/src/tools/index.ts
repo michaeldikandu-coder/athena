@@ -2,7 +2,7 @@ import os from 'os';
 import { z } from 'zod';
 import { Tool } from '@athena/core';
 import { getDatabaseHealth } from '@athena/database';
-import { formatAmount, github, resolveRepo, sendNotificationTool, stripe } from '@athena/integrations';
+import { bachs, BachsPayment, formatMoney, github, resolveRepo, sendNotificationTool } from '@athena/integrations';
 import { getService, getServices, getLogSources } from '../config/services';
 import { checkHealth } from '../health';
 import { queryLogFile } from '../logs';
@@ -213,46 +213,61 @@ export const rerunFailedJobsTool: Tool<z.infer<typeof runInput>> = {
   },
 };
 
-// ---------- Orders (Stripe PaymentIntents) ----------
+// ---------- Orders (Bachs checkouts and payments) ----------
 
-const orderInput = z.object({
-  paymentIntentId: z.string().regex(/^pi_[A-Za-z0-9]+$/).describe('Stripe PaymentIntent id (pi_...)'),
-});
+const bachsId = z.string().regex(/^[A-Za-z0-9_-]{3,100}$/);
+const orderInput = z
+  .object({
+    checkoutId: bachsId.optional().describe('Bachs checkout id (chk_...) for the order'),
+    chargeId: bachsId.optional().describe('Bachs charge id (ch_...) of the order payment'),
+  })
+  .refine((v) => v.checkoutId || v.chargeId, 'Provide checkoutId or chargeId');
+
+function paymentView(p: BachsPayment) {
+  return {
+    chargeId: p.payment_id,
+    status: p.status,
+    amount: formatMoney(p.amount, p.currency),
+    paymentMethod: p.payment_method ?? null,
+    message: p.message ?? null,
+    statusHistory: (p.status_history ?? []).map((h) => ({ status: h.status, at: h.occurred_at, reason: h.reason ?? null })),
+    createdAt: p.created_at,
+    completedAt: p.completed_at ?? null,
+  };
+}
+
 export const getOrderDetailsTool: Tool<z.infer<typeof orderInput>> = {
   id: 'get_order_details',
   name: 'Get Order Details',
   description:
-    'Fetch an order payment from Stripe (PaymentIntent): status, amount, last payment error, and timeline.',
+    'Fetch an order from Bachs by checkout id or charge id: checkout status and expiry, payment status, payment method, and status history with failure reasons.',
   inputSchema: orderInput,
   permissionLevel: 'low',
   requiredPermissions: ['read:orders'],
   requiresApproval: false,
   category: 'orders',
-  handler: async ({ paymentIntentId }) => {
-    const pi = await stripe().get<any>(`/v1/payment_intents/${encodeURIComponent(paymentIntentId)}`);
-    return {
-      success: true,
-      data: {
-        id: pi.id,
-        status: pi.status,
-        amount: formatAmount(pi.amount, pi.currency),
-        createdAt: new Date(pi.created * 1000).toISOString(),
-        customerId: pi.customer,
-        description: pi.description,
-        metadata: pi.metadata,
-        lastPaymentError: pi.last_payment_error
-          ? {
-              code: pi.last_payment_error.code,
-              declineCode: pi.last_payment_error.decline_code,
-              message: pi.last_payment_error.message,
-              type: pi.last_payment_error.type,
-            }
-          : null,
-        latestChargeId: pi.latest_charge,
-        canceledAt: pi.canceled_at ? new Date(pi.canceled_at * 1000).toISOString() : null,
-        cancellationReason: pi.cancellation_reason,
-      },
-    };
+  handler: async ({ checkoutId, chargeId }) => {
+    if (checkoutId) {
+      const c = await bachs().get<any>(`/v1/checkout-sessions/${encodeURIComponent(checkoutId)}`);
+      return {
+        success: true,
+        data: {
+          checkoutId: c.checkout_id,
+          status: c.status,
+          paymentStatus: c.payment_status ?? null,
+          amount: c.amount ? formatMoney(c.amount, c.currency) : null,
+          reference: c.reference ?? null,
+          paymentMethod: c.payment_method ?? null,
+          createdAt: c.created_at ?? null,
+          expiresAt: c.expires_at ?? null,
+          completedAt: c.completed_at ?? null,
+          metadata: c.metadata ?? {},
+          payment: c.charge ? paymentView(c.charge as BachsPayment) : null,
+        },
+      };
+    }
+    const p = await bachs().get<BachsPayment>(`/v1/payments/${encodeURIComponent(chargeId!)}`);
+    return { success: true, data: { ...paymentView(p), checkoutId: p.checkout_id ?? null, reference: p.reference ?? null } };
   },
 };
 

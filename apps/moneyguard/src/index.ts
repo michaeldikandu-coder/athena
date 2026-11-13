@@ -8,21 +8,25 @@ export const moneyGuardApp: AthenaApplication = {
   name: 'MoneyGuard',
   tagline: 'Financial operations agent',
   description:
-    'Investigates failed and suspicious Stripe transactions, evaluates risk rules, opens cases, and flags or refunds charges after human approval.',
+    'Investigates failed, suspicious, underpaid, and disputed Bachs payments, evaluates risk rules, opens cases, and flags customers or issues refunds after human approval.',
   tools: moneyGuardTools,
   agent: moneyGuardAgent,
   workflows: moneyGuardWorkflows,
   env: [
-    { name: 'STRIPE_SECRET_KEY', description: 'Stripe secret key (sk_test_... for test mode)' },
     {
-      name: 'STRIPE_WEBHOOK_SECRET',
-      description: 'Signing secret for the Stripe webhook endpoint (whsec_...)',
+      name: 'BACHS_API_KEY',
+      description:
+        'Bachs secret key (sk_sandbox_... for the sandbox). Needs payments, customers, refunds, and disputes access.',
+    },
+    {
+      name: 'BACHS_WEBHOOK_SECRET',
+      description: 'Signing secret of the Bachs webhook endpoint pointing at /api/webhooks/bachs',
       optional: true,
     },
     { name: 'SLACK_WEBHOOK_URL', description: 'Slack incoming webhook for notifications', optional: true },
     {
-      name: 'MONEYGUARD_LARGE_AMOUNT',
-      description: 'Large-amount threshold in minor units (default 100000 = 1,000.00)',
+      name: 'MONEYGUARD_LARGE_AMOUNTS',
+      description: 'JSON map of large-payment thresholds per currency, e.g. {"NGN":"1500000","USD":"1000"}',
       optional: true,
     },
   ],
@@ -31,5 +35,5 @@ export const moneyGuardApp: AthenaApplication = {
 export { moneyGuardTools } from './tools';
 export { CaseModel } from './models/case.model';
 export type { ICase } from './models/case.model';
-export { fetchRecentCharges, summarizeCharge } from './stripe-data';
+export { fetchRecentPayments, summarizeListItem } from './bachs-data';
 export { assessRisk } from './risk-rules';

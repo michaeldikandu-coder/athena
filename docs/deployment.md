@@ -36,7 +36,7 @@ On Vercel, set the project root to `apps/dashboard`, and set the install command
 
 After the API is live:
 
-- Stripe: add an endpoint `https://<api>/api/webhooks/stripe` with events `charge.failed`, `charge.succeeded`, `radar.early_fraud_warning.created`, `payment_intent.payment_failed`. Put its signing secret in `STRIPE_WEBHOOK_SECRET`.
+- Bachs: in the Bachs dashboard (or `POST /v1/webhooks/endpoints`) add an endpoint `https://<api>/api/webhooks/bachs` with event types `collection.failed`, `collection.succeeded`, `collection.underpaid`, `dispute.created`, `checkout.expired`. Put its signing secret in `BACHS_WEBHOOK_SECRET`. Bachs requires a 2xx within 10 seconds; the API acknowledges immediately and processes asynchronously.
 - GitHub: add a repository webhook `https://<api>/api/webhooks/github`, content type JSON, event "Workflow runs". Put its secret in `GITHUB_WEBHOOK_SECRET`.
 
 ## Pre-deploy checklist

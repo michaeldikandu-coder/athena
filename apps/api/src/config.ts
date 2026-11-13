@@ -35,7 +35,7 @@ export const config = {
   allowRegistration: process.env.ALLOW_REGISTRATION !== 'false',
   /** Secret used to derive per-workflow webhook signing secrets */
   webhookSigningSecret: required('WEBHOOK_SIGNING_SECRET', 'dev-only-webhook-secret'),
-  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
+  bachsWebhookSecret: process.env.BACHS_WEBHOOK_SECRET || '',
   githubWebhookSecret: process.env.GITHUB_WEBHOOK_SECRET || '',
   cookieName: 'athena_token',
   /** Set "none" when the dashboard and API are on different sites (requires HTTPS) */

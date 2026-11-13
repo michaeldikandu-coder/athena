@@ -329,12 +329,16 @@ interface Approval {
 8. Execute approved action
 9. Record complete execution trail
 
+**Payment provider**: Bachs (https://bachs.io)
+
 **Tools**:
 - `get_transaction_details`
 - `get_customer_profile`
-- `check_risk_rules`
 - `search_transaction_history`
-- `flag_transaction`
+- `get_disputes`
+- `check_risk_rules`
+- `flag_customer` (approval)
+- `refund_transaction` (approval)
 - `send_notification`
 - `create_case`
 
@@ -742,7 +746,7 @@ athena/
   - *Mitigation*: Implement early, test thoroughly
   
 - **Demo Reliability**: Live demo with external integrations
-  - *Mitigation*: Prepare fallback recordings; use Stripe test mode and a dedicated GitHub repo
+  - *Mitigation*: Prepare fallback recordings; use the Bachs sandbox and a dedicated GitHub repo
 
 ### Low Risk
 - **UI Polish**: Not critical for hackathon success

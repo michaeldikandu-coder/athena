@@ -25,7 +25,7 @@ export const opsGuardApp: AthenaApplication = {
       optional: true,
     },
     { name: 'OPSGUARD_LOG_FILES', description: 'JSON map of log source name to file path', optional: true },
-    { name: 'STRIPE_SECRET_KEY', description: 'Stripe key, for failed order investigation', optional: true },
+    { name: 'BACHS_API_KEY', description: 'Bachs key, for order and checkout investigation', optional: true },
     { name: 'SLACK_WEBHOOK_URL', description: 'Slack incoming webhook for notifications', optional: true },
   ],
 };

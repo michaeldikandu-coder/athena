@@ -4,7 +4,7 @@
 
 Athena is a reusable AI agent runtime. Applications plug into it as configuration (an agent template, tools, and workflow templates) and never ship their own execution logic. Two applications demonstrate it:
 
-- **MoneyGuard** investigates failed and suspicious Stripe charges, scores them against risk rules, opens cases, and flags or refunds charges after a human approves.
+- **MoneyGuard** investigates failed, suspicious, underpaid, and disputed [Bachs](https://bachs.io) payments, scores them against risk rules, opens cases, and flags customers or refunds payments after a human approves.
 - **OpsGuard** checks live service health, reads logs, inspects GitHub Actions failures, opens and updates incident tickets (GitHub Issues), and re-runs failed deployments after approval.
 
 Both run on the same agent loop, tool registry, permission checks, approval queue, memory, workflow engine, and execution monitor. They also share one tool implementation: `send_notification` (Slack).
@@ -21,10 +21,10 @@ apps/dashboard (Next.js) ──/api proxy──▶ apps/api (Express + WebSocket
           └───────────────┬───────────────────────────────┬───────────────┘
                           │                               │
                  apps/moneyguard                   apps/opsguard
-                 (Stripe tools, risk rules)        (health, logs, GitHub)
+                 (Bachs tools, risk rules)         (health, logs, GitHub)
                           └──── packages/integrations ────┘
                        REST client · webhook signatures · CSV/XML bridge
-                       Stripe · GitHub · Slack connectors · shared tools
+                       Bachs · GitHub · Slack connectors · shared tools
 ```
 
 | Package | Purpose |
@@ -32,14 +32,14 @@ apps/dashboard (Next.js) ──/api proxy──▶ apps/api (Express + WebSocket
 | `packages/shared` | Errors, logger with secret redaction, response helpers, validation |
 | `packages/database` | Mongoose connection and models |
 | `packages/core` | Runtime, tools, permissions, approvals, memory, events, monitor, workflows, LLM adapters, application contract |
-| `packages/integrations` | REST client with retries, Stripe/GitHub/HMAC signature checks, legacy CSV/XML normalization, connectors |
+| `packages/integrations` | REST client with retries, Bachs/GitHub/HMAC signature checks, legacy CSV/XML normalization, connectors |
 | `apps/moneyguard`, `apps/opsguard` | Applications built on the `AthenaApplication` contract |
 | `apps/api` | Auth, REST API, webhooks, WebSocket |
 | `apps/dashboard` | Web UI |
 
 ### How an execution runs
 
-1. A trigger arrives: a dashboard action, a Stripe or GitHub webhook, a signed per-workflow webhook, a custom event (`POST /api/events`), or a schedule.
+1. A trigger arrives: a dashboard action, a Bachs or GitHub webhook, a signed per-workflow webhook, a custom event (`POST /api/events`), or a schedule.
 2. The runtime loads the agent (prompt, model, permissions, tools) and its memory.
 3. The LLM picks a tool. Before it runs, the runtime checks that the tool is assigned, that the agent holds the tool's `requiredPermissions`, and validates the input with the tool's Zod schema.
 4. High-risk or approval-flagged tools pause the execution (`waiting_approval`). A reviewer approves or rejects in the dashboard; a rejection is returned to the agent, which explains and continues.
@@ -72,21 +72,23 @@ All integrations use real APIs. Each tool reports a clear error when its service
 
 | Feature | Settings |
 |---|---|
-| MoneyGuard charge data, flags, refunds | `STRIPE_SECRET_KEY` (a `sk_test_` key is fine) |
-| MoneyGuard webhook workflows | Stripe webhook to `<API_URL>/api/webhooks/stripe` for `charge.failed`, `charge.succeeded`, `radar.early_fraud_warning.created`; set `STRIPE_WEBHOOK_SECRET` |
+| MoneyGuard payments, customers, disputes, flags, refunds | `BACHS_API_KEY` (an `sk_sandbox_` key uses the Bachs sandbox) |
+| MoneyGuard webhook workflows | Bachs webhook endpoint `<API_URL>/api/webhooks/bachs` subscribed to `collection.failed`, `collection.succeeded`, `collection.underpaid`, `dispute.created` (and `checkout.expired` for OpsGuard); set `BACHS_WEBHOOK_SECRET` |
 | OpsGuard health checks | `OPSGUARD_SERVICES` JSON list. The agent can only reach these URLs. |
 | OpsGuard logs | `OPSGUARD_LOG_FILES` JSON map of name to path. Only these files are readable. |
 | OpsGuard CI/CD and incidents | `GITHUB_TOKEN`, `GITHUB_REPO` |
 | OpsGuard failed-deployment workflow | GitHub repo webhook (event `workflow_run`) to `<API_URL>/api/webhooks/github`; set `GITHUB_WEBHOOK_SECRET` |
-| OpsGuard failed-order workflow | Stripe webhook event `payment_intent.payment_failed` |
+| OpsGuard abandoned-order workflow | Bachs webhook event `checkout.expired` |
 | Notifications (both apps) | `SLACK_WEBHOOK_URL` |
 
-With the Stripe CLI you can forward test events locally:
+With the [Bachs CLI](https://docs.bachs.io/developer-portal/local-testing) you can forward sandbox events locally:
 
 ```bash
-stripe listen --forward-to localhost:3001/api/webhooks/stripe   # prints the whsec_ secret
-stripe trigger charge.failed
+bachs listen --forward-to localhost:3001/api/webhooks/bachs   # prints the signing secret for BACHS_WEBHOOK_SECRET
+bachs trigger collection.failed
 ```
+
+Bachs money is a decimal string with a currency (`"75000.00"` NGN), never minor units. Payments carry the customer's name and email but no customer id, so MoneyGuard finds the customer and their history by email. Large-payment thresholds are per currency (`MONEYGUARD_LARGE_AMOUNTS`).
 
 ### Custom webhooks
 
@@ -123,9 +125,9 @@ Register it in `apps/api/src/index.ts` with `registerApplication(myApp)`. It the
 - All resources are scoped to their owner; other users get 404.
 - Tools declare required permissions; the runtime denies calls the agent is not granted.
 - `permissionLevel: 'high'` tools always need human approval. Approvals are owner-only, single-use, and expire after 30 minutes.
-- Webhooks are verified (Stripe signature with timestamp tolerance, GitHub HMAC, per-workflow HMAC) and de-duplicated.
+- Webhooks are verified (Bachs `X-Bachs-Signature-V2` with timestamp tolerance and secret rotation, GitHub HMAC, per-workflow HMAC) and de-duplicated.
 - OpsGuard can only reach configured URLs (no redirects) and read configured log files.
-- Refunds and flags use Stripe idempotency keys.
+- Refunds and customer flags send idempotency keys, and refunds check for an existing refund first (Bachs allows one per charge). Bank-transfer sender account numbers are masked before the agent sees them.
 - The logger redacts keys containing password, token, secret, apikey, authorization, or cookie.
 
 ## Scripts

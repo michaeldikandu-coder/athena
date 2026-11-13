@@ -5,7 +5,8 @@ export interface ICase {
   agentId: string;
   executionId: string;
   chargeId: string;
-  customerId?: string;
+  customerEmail?: string;
+  disputeId?: string;
   title: string;
   summary: string;
   riskLevel: 'low' | 'medium' | 'high';
@@ -17,11 +18,12 @@ export interface ICase {
 
 const CaseSchema = new Schema<ICase>(
   {
-    userId: { type: String, required: true, index: true },
+    userId: { type: String, required: true },
     agentId: { type: String, required: true },
     executionId: { type: String, required: true, index: true },
     chargeId: { type: String, required: true, index: true },
-    customerId: { type: String, index: true },
+    customerEmail: { type: String, lowercase: true, trim: true, index: true },
+    disputeId: { type: String, index: true },
     title: { type: String, required: true },
     summary: { type: String, required: true },
     riskLevel: { type: String, enum: ['low', 'medium', 'high'], required: true },

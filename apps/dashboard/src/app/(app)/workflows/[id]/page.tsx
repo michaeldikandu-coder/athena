@@ -111,8 +111,8 @@ export default function WorkflowDetailPage() {
               </ul>
             </>
           )}
-          {workflow.trigger.type === 'webhook' && workflow.trigger.config.event?.startsWith('stripe.') && (
-            <p className="mt-3 text-xs text-ink-400">Receives events from <span className="font-mono">POST /api/webhooks/stripe</span>. Point a Stripe webhook endpoint there.</p>
+          {workflow.trigger.type === 'webhook' && workflow.trigger.config.event?.startsWith('bachs.') && (
+            <p className="mt-3 text-xs text-ink-400">Receives events from <span className="font-mono">POST /api/webhooks/bachs</span>. Add a Bachs webhook endpoint there subscribed to <span className="font-mono">{workflow.trigger.config.event.slice(6)}</span>.</p>
           )}
           {workflow.trigger.type === 'webhook' && workflow.trigger.config.event?.startsWith('github.') && (
             <p className="mt-3 text-xs text-ink-400">Receives events from <span className="font-mono">POST /api/webhooks/github</span>. Add a repository webhook pointing there.</p>

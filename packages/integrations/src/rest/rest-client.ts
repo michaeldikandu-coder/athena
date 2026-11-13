@@ -19,7 +19,7 @@ export interface RestRequest {
   path: string;
   query?: Record<string, string | number | boolean | undefined>;
   body?: unknown;
-  /** Send body as application/x-www-form-urlencoded (e.g. Stripe) */
+  /** Send body as application/x-www-form-urlencoded */
   form?: boolean;
   headers?: Record<string, string>;
   /** Retry non-idempotent requests too. Default: only GET/HEAD/PUT/DELETE retry. */
@@ -32,7 +32,7 @@ const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS']);
 
 /**
- * Encode nested objects the way Stripe and many form APIs expect:
+ * Encode nested objects the way many form APIs expect:
  * { metadata: { a: 1 } } -> metadata[a]=1
  */
 export function encodeForm(data: unknown, prefix = ''): string {
@@ -161,6 +161,12 @@ export class RestClient {
     if (!data) return 'no body';
     if (typeof data === 'string') return data.slice(0, 300);
     const obj = data as Record<string, any>;
-    return String(obj.error?.message || obj.message || JSON.stringify(obj).slice(0, 300));
+    // Bachs: { detail, error_code, errors? }; GitHub: { message }; others: { error: { message } }
+    const message = obj.detail || obj.error?.message || obj.message || JSON.stringify(obj).slice(0, 300);
+    const code = obj.error_code ? ` [${obj.error_code}]` : '';
+    const fields = Array.isArray(obj.errors)
+      ? ` ${JSON.stringify(obj.errors).slice(0, 200)}`
+      : '';
+    return `${String(message)}${code}${fields}`;
   }
 }

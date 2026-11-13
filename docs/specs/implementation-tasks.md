@@ -32,9 +32,9 @@ Status legend: [x] done, [ ] open.
 
 ## Phase 6: Integration layer
 - [x] REST client with retries and idempotency keys
-- [x] Webhook verification: Stripe, GitHub, per-workflow HMAC
+- [x] Webhook verification: Bachs (V2 and legacy headers), GitHub, per-workflow HMAC
 - [x] Legacy bridge: CSV/XML/JSON normalization
-- [x] Connectors: Stripe, GitHub, Slack
+- [x] Connectors: Bachs, GitHub, Slack
 
 ## Phase 7: Backend API
 - [x] Auth (register, login, logout, me, ws-token), rate limiting
@@ -48,24 +48,24 @@ Status legend: [x] done, [ ] open.
 - [x] Live updates over WebSocket with reconnect
 
 ## Phase 9: MoneyGuard
-- [x] Tools: get_transaction_details, get_customer_profile, search_transaction_history, check_risk_rules, flag_transaction, refund_transaction, create_case, send_notification
-- [x] Risk rules on live Stripe data
-- [x] Workflows: failed charges, large charges, early fraud warnings
-- [x] Dashboard page: live charges, investigate, cases
+- [x] Tools: get_transaction_details, get_customer_profile, search_transaction_history, get_disputes, check_risk_rules, flag_customer, refund_transaction, create_case, send_notification
+- [x] Risk rules on live Bachs data (per-currency thresholds)
+- [x] Workflows: failed payments, successful-payment risk review, underpaid payments, disputes
+- [x] Dashboard page: live payments, investigate, cases
 
 ## Phase 10: OpsGuard
 - [x] Tools: get_system_status, check_service_health, query_logs, list_workflow_runs, get_workflow_run, rerun_failed_jobs, get_order_details, search_tickets, create_ticket, update_incident, send_notification
-- [x] Workflows: scheduled health check, failed deployments, failed orders, external alerts
+- [x] Workflows: scheduled health check, failed deployments, abandoned orders (Bachs checkout.expired), external alerts
 - [x] Dashboard page: live health, failed CI runs, report incident
 
 ## Phase 11: Demo and polish
 - [x] Demo script, deployment guide, README, `.env.example`
-- [ ] Run end to end with real LLM, Stripe, GitHub, Slack credentials
+- [ ] Run end to end with real LLM, Bachs, GitHub, Slack credentials
 - [ ] Prepare demo data
 
 ## Phase 12: Deployment
 - [ ] MongoDB Atlas
 - [ ] API host
 - [ ] Dashboard host
-- [ ] Register Stripe and GitHub webhooks
+- [ ] Register Bachs and GitHub webhooks
 - [ ] Record demo video and submit

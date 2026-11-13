@@ -2,8 +2,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { AgentModel, WorkflowModel } from '@athena/database';
 import { agentRuntime, describeApplication, getApplication, listApplications } from '@athena/core';
-import { isGithubConfigured, isStripeConfigured, github, resolveRepo } from '@athena/integrations';
-import { CaseModel, fetchRecentCharges, summarizeCharge } from '@athena/moneyguard';
+import { bachsEnvironment, isBachsConfigured, isGithubConfigured, github, resolveRepo } from '@athena/integrations';
+import { CaseModel, fetchRecentPayments } from '@athena/moneyguard';
 import { checkHealth, getServices } from '@athena/opsguard';
 import { AppError, NotFoundError, logger, successResponse } from '@athena/shared';
 import { asyncHandler, validate } from '../middleware/validate';
@@ -82,14 +82,31 @@ router.get(
 // ---------- MoneyGuard ----------
 
 router.get(
-  '/moneyguard/charges',
+  '/moneyguard/payments',
   asyncHandler(async (_req, res) => {
-    if (!isStripeConfigured()) {
-      res.json(successResponse({ configured: false, charges: [] }));
+    if (!isBachsConfigured()) {
+      res.json(successResponse({ configured: false, environment: null, payments: [] }));
       return;
     }
-    const charges = await fetchRecentCharges(25);
-    res.json(successResponse({ configured: true, charges: charges.map(summarizeCharge) }));
+    const payments = await fetchRecentPayments(25);
+    res.json(
+      successResponse({
+        configured: true,
+        environment: bachsEnvironment(),
+        payments: payments.map((p) => ({
+          chargeId: p.id ?? null,
+          status: p.status,
+          amount: p.amount,
+          currency: p.currency,
+          customerName: p.customer_name ?? null,
+          customerEmail: p.customer_email ?? null,
+          reference: p.reference ?? null,
+          settlement: p.settlement_amount ? { amount: p.settlement_amount, currency: p.settlement_currency } : null,
+          isRefundable: p.is_refundable ?? null,
+          date: p.transaction_date ?? p.completed_at ?? null,
+        })),
+      })
+    );
   })
 );
 
@@ -102,7 +119,7 @@ router.get(
 );
 
 const investigateChargeBody = z.object({
-  chargeId: z.string().regex(/^(ch|py)_[A-Za-z0-9]+$/),
+  chargeId: z.string().regex(/^[A-Za-z0-9_-]{3,100}$/),
   note: z.string().max(1000).optional(),
 });
 
@@ -115,7 +132,7 @@ router.post(
     const result = await agentRuntime.start({
       agentId,
       userId: req.user!.id,
-      task: `Investigate Stripe charge ${chargeId}.${note ? ` Reviewer note: ${note}` : ''}`,
+      task: `Investigate Bachs payment ${chargeId}.${note ? ` Reviewer note: ${note}` : ''}`,
       trigger: { type: 'manual', source: 'moneyguard', payload: { chargeId } },
     });
     res.status(202).json(successResponse(result));

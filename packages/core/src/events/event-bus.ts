@@ -20,11 +20,11 @@ export interface ExecutionEventPayload {
  * External or internal event that can trigger workflows
  */
 export interface TriggerEvent {
-  /** Event name, e.g. "stripe.charge.failed" or "opsguard.service_down" */
+  /** Event name, e.g. "bachs.collection.failed" or "opsguard.service_down" */
   event: string;
   source: string;
   payload: Record<string, any>;
-  /** Restrict to workflows owned by this user. Omit for system-wide events (e.g. Stripe webhooks). */
+  /** Restrict to workflows owned by this user. Omit for system-wide events (e.g. Bachs webhooks). */
   userId?: string;
   /** Restrict to one workflow (used by per-workflow webhooks) */
   workflowId?: string;

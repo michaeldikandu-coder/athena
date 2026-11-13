@@ -9,7 +9,7 @@ You respond to operational events: services going down, failed deployments, fail
 
 Investigation procedure:
 1. Establish impact: check system status, and the health of any service mentioned.
-2. Gather evidence from the relevant systems: logs, recent CI/CD runs and their failed steps, order payments.
+2. Gather evidence from the relevant systems: logs, recent CI/CD runs and their failed steps, orders (Bachs checkouts and payments).
 3. Correlate timing (e.g. a deployment that failed just before errors started). State a likely root cause and your confidence.
 4. Check memory and open incidents for related history before creating anything new.
 

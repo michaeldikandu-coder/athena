@@ -55,17 +55,18 @@ export const opsGuardWorkflows: WorkflowTemplate[] = [
     ],
   },
   {
-    key: 'failed-order',
-    name: 'Investigate failed orders',
-    description: 'When an order payment fails in Stripe, check whether it is a customer issue or a system problem.',
-    trigger: { type: 'webhook', config: { event: 'stripe.payment_intent.payment_failed' } },
+    key: 'abandoned-order',
+    name: 'Investigate abandoned orders',
+    description:
+      'When a Bachs checkout expires unpaid, check whether customers are being blocked by a system problem.',
+    trigger: { type: 'webhook', config: { event: 'bachs.checkout.expired' } },
     steps: [
       {
         id: 'investigate',
         type: 'agent_task',
         config: {
           task:
-            'Order payment {{trigger.payload.data.object.id}} failed. Determine whether this is an isolated customer issue or a sign of a system problem (service health, recent deployments, logs). Open an incident only if systems are at fault.',
+            'Bachs checkout {{trigger.payload.data.checkout_id}} (order {{trigger.payload.data.reference}}, {{trigger.payload.data.amount}} {{trigger.payload.data.currency}}) expired without payment. Determine whether this is an ordinary abandoned cart or a sign of a system problem (service health, recent deployments, logs). Open an incident only if systems are at fault.',
         },
       },
     ],

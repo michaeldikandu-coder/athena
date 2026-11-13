@@ -1,7 +1,7 @@
 import { Request, Router } from 'express';
 import { WorkflowModel } from '@athena/database';
 import { eventBus, workflowEngine } from '@athena/core';
-import { verifyGithubSignature, verifyHmacSignature, verifyStripeSignature } from '@athena/integrations';
+import { verifyBachsSignature, verifyGithubSignature, verifyHmacSignature } from '@athena/integrations';
 import { AppError, UnauthorizedError, commonSchemas, logger, successResponse } from '@athena/shared';
 import { config } from '../config';
 import { asyncHandler } from '../middleware/validate';
@@ -30,25 +30,28 @@ function rawBody(req: Request): Buffer {
 }
 
 /**
- * Stripe: system-wide events, delivered to every matching workflow
+ * Bachs: system-wide events, delivered to every matching workflow as
+ * "bachs.<type>", e.g. "bachs.collection.failed". Bachs expects a 2xx within
+ * 10 seconds, so processing happens asynchronously on the event bus.
  */
-router.post('/stripe', (req, res) => {
-  if (!config.stripeWebhookSecret) {
-    res.status(503).json({ success: false, error: { message: 'Stripe webhook not configured' } });
+router.post('/bachs', (req, res) => {
+  if (!config.bachsWebhookSecret) {
+    res.status(503).json({ success: false, error: { message: 'Bachs webhook not configured' } });
     return;
   }
-  if (!verifyStripeSignature(rawBody(req), req.header('stripe-signature'), config.stripeWebhookSecret)) {
-    throw new UnauthorizedError('Invalid Stripe signature');
+  const valid = verifyBachsSignature(rawBody(req), (name) => req.header(name), config.bachsWebhookSecret);
+  if (!valid) throw new UnauthorizedError('Invalid Bachs signature');
+
+  const event = req.body as { id?: string; type?: string; organization_id?: string; data?: unknown };
+  if (!event?.id || !event?.type || !event.data || typeof event.data !== 'object') {
+    throw new AppError('Invalid Bachs event envelope', { statusCode: 400 });
   }
-  const event = req.body as { id: string; type: string; livemode: boolean };
-  if (!event?.id || !event?.type) throw new AppError('Invalid Stripe event', { statusCode: 400 });
 
-  // Respond quickly; processing happens asynchronously on the event bus
   res.json({ received: true });
-  if (alreadyProcessed(`stripe:${event.id}`)) return;
+  if (alreadyProcessed(`bachs:${event.id}`)) return;
 
-  logger.info('Stripe webhook received', { type: event.type, id: event.id });
-  eventBus.emit('trigger', { event: `stripe.${event.type}`, source: 'stripe', payload: req.body });
+  logger.info('Bachs webhook received', { type: event.type, id: event.id });
+  eventBus.emit('trigger', { event: `bachs.${event.type}`, source: 'bachs', payload: req.body });
 });
 
 /**
