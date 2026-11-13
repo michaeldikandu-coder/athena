@@ -511,7 +511,7 @@ interface Approval {
 8. **Applications**
    - MoneyGuard demo application
    - OpsGuard demo application
-   - Shared FrankenForge core
+   - Shared Athena core
    - Application-specific UI/configuration
 
 9. **Dashboard**
@@ -742,7 +742,7 @@ athena/
   - *Mitigation*: Implement early, test thoroughly
   
 - **Demo Reliability**: Live demo with external integrations
-  - *Mitigation*: Prepare fallback recordings, use reliable mock APIs
+  - *Mitigation*: Prepare fallback recordings; use Stripe test mode and a dedicated GitHub repo
 
 ### Low Risk
 - **UI Polish**: Not critical for hackathon success

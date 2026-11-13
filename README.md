@@ -1,234 +1,150 @@
-# Athena - Reusable AI Agent Framework
+# Athena
 
-**One skeleton, multiple agents.**
+**One skeleton, many agents.**
 
-Athena is a reusable AI-agent framework that lets developers build one common agent skeleton and deploy it into multiple real-world applications. Build once, deploy many intelligent workflows across completely different systems.
+Athena is a reusable AI agent runtime. Applications plug into it as configuration (an agent template, tools, and workflow templates) and never ship their own execution logic. Two applications demonstrate it:
 
-## 🎯 Project Overview
+- **MoneyGuard** investigates failed and suspicious Stripe charges, scores them against risk rules, opens cases, and flags or refunds charges after a human approves.
+- **OpsGuard** checks live service health, reads logs, inspects GitHub Actions failures, opens and updates incident tickets (GitHub Issues), and re-runs failed deployments after approval.
 
-Athena provides a shared runtime for:
-- **Agent execution** - Tool calls, reasoning loops, and execution state
-- **Tool management** - Registry, permissions, and validation
-- **Workflows** - Multi-step actions with conditional logic
-- **Memory** - Context storage and task history
-- **Permissions** - Role-based access control and authorization
-- **Human approval** - Pause sensitive actions for review
-- **Integrations** - Connect REST APIs, webhooks, databases, and legacy systems
-- **Real-time monitoring** - Track execution, tool calls, and status
+Both run on the same agent loop, tool registry, permission checks, approval queue, memory, workflow engine, and execution monitor. They also share one tool implementation: `send_notification` (Slack).
 
-## 🏗️ Architecture
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        Athena Core                           │
-│  Agent Runtime • Tools • Workflows • Memory • Permissions    │
-│  Approvals • Events • Monitoring • Integrations              │
-└─────────────────────────────────────────────────────────────┘
-                              │
-          ┌───────────────────┴───────────────────┐
-          ▼                                       ▼
-┌─────────────────────┐               ┌─────────────────────┐
-│    MoneyGuard       │               │      OpsGuard       │
-│  Financial Agent    │               │   Operations Agent  │
-└─────────────────────┘               └─────────────────────┘
+apps/dashboard (Next.js) ──/api proxy──▶ apps/api (Express + WebSocket)
+                                            │
+          ┌─────────────────────────────────┼─────────────────────────────┐
+          │                         packages/core                          │
+          │  AgentRuntime ─ ToolRegistry ─ PermissionManager ─ Approvals   │
+          │  WorkflowEngine ─ EventBus ─ ExecutionMonitor ─ Memory ─ LLM   │
+          └───────────────┬───────────────────────────────┬───────────────┘
+                          │                               │
+                 apps/moneyguard                   apps/opsguard
+                 (Stripe tools, risk rules)        (health, logs, GitHub)
+                          └──── packages/integrations ────┘
+                       REST client · webhook signatures · CSV/XML bridge
+                       Stripe · GitHub · Slack connectors · shared tools
 ```
 
-## 📦 Monorepo Structure
+| Package | Purpose |
+|---|---|
+| `packages/shared` | Errors, logger with secret redaction, response helpers, validation |
+| `packages/database` | Mongoose connection and models |
+| `packages/core` | Runtime, tools, permissions, approvals, memory, events, monitor, workflows, LLM adapters, application contract |
+| `packages/integrations` | REST client with retries, Stripe/GitHub/HMAC signature checks, legacy CSV/XML normalization, connectors |
+| `apps/moneyguard`, `apps/opsguard` | Applications built on the `AthenaApplication` contract |
+| `apps/api` | Auth, REST API, webhooks, WebSocket |
+| `apps/dashboard` | Web UI |
 
-```
-athena/
-├── packages/
-│   ├── core/          # Agent runtime, tools, workflows, permissions
-│   ├── database/      # MongoDB models and schemas
-│   ├── integrations/  # REST, webhooks, legacy system bridges
-│   └── shared/        # Shared utilities and types
-├── apps/
-│   ├── api/           # Backend API server
-│   ├── dashboard/     # Web dashboard (Next.js)
-│   ├── moneyguard/    # Financial operations agent
-│   └── opsguard/      # Business operations agent
-└── docs/
-    ├── specs/         # Kiro specs and requirements
-    ├── demo/          # Demo scripts
-    └── architecture/  # Architecture diagrams
-```
+### How an execution runs
 
-## 🚀 Getting Started
+1. A trigger arrives: a dashboard action, a Stripe or GitHub webhook, a signed per-workflow webhook, a custom event (`POST /api/events`), or a schedule.
+2. The runtime loads the agent (prompt, model, permissions, tools) and its memory.
+3. The LLM picks a tool. Before it runs, the runtime checks that the tool is assigned, that the agent holds the tool's `requiredPermissions`, and validates the input with the tool's Zod schema.
+4. High-risk or approval-flagged tools pause the execution (`waiting_approval`). A reviewer approves or rejects in the dashboard; a rejection is returned to the agent, which explains and continues.
+5. Every step is stored as an execution event and streamed to the dashboard over WebSocket.
 
-### Prerequisites
+### LLM providers
 
-- Node.js 20+
-- MongoDB (local or Atlas)
-- npm 10+
+- **Anthropic Claude** (default model `claude-sonnet-5-5`). Uses adaptive thinking with summarized display, so reasoning shows in the timeline. Signed thinking blocks are replayed unchanged with tool results, as the API requires. Claude 5.x rejects `temperature`, so it is not sent.
+- **Groq** (default model `openai/gpt-oss-120b`), OpenAI-compatible function calling.
 
-### Installation
+Model and provider are set per agent; defaults come from `ANTHROPIC_MODEL` / `GROQ_MODEL`.
+
+## Getting started
+
+Requirements: Node.js 20+, npm 10+, MongoDB 6+ (local or Atlas), and an Anthropic or Groq API key.
 
 ```bash
-# Install all dependencies
 npm install
-
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your configuration
-
-# Build all packages
-npm run build
-
-# Start development
-npm run dev
+cp .env.example .env        # fill in MONGODB_URI, JWT_SECRET, an LLM key, and integration keys
+npm run build:backend
+npm run dev:api             # API on :3001
+npm run dev:dashboard       # dashboard on :3000 (second terminal)
 ```
 
-### Environment Variables
+Open http://localhost:3000, create an account (the first account is admin), go to **Applications**, and install MoneyGuard and/or OpsGuard.
 
-Create a `.env` file in the root:
+### Integration setup
 
-```env
-# Database
-MONGODB_URI=mongodb://localhost:27017/athena
+All integrations use real APIs. Each tool reports a clear error when its service is not configured.
 
-# LLM Provider (Claude or Groq)
-ANTHROPIC_API_KEY=your_key_here
-# OR
-GROQ_API_KEY=your_key_here
+| Feature | Settings |
+|---|---|
+| MoneyGuard charge data, flags, refunds | `STRIPE_SECRET_KEY` (a `sk_test_` key is fine) |
+| MoneyGuard webhook workflows | Stripe webhook to `<API_URL>/api/webhooks/stripe` for `charge.failed`, `charge.succeeded`, `radar.early_fraud_warning.created`; set `STRIPE_WEBHOOK_SECRET` |
+| OpsGuard health checks | `OPSGUARD_SERVICES` JSON list. The agent can only reach these URLs. |
+| OpsGuard logs | `OPSGUARD_LOG_FILES` JSON map of name to path. Only these files are readable. |
+| OpsGuard CI/CD and incidents | `GITHUB_TOKEN`, `GITHUB_REPO` |
+| OpsGuard failed-deployment workflow | GitHub repo webhook (event `workflow_run`) to `<API_URL>/api/webhooks/github`; set `GITHUB_WEBHOOK_SECRET` |
+| OpsGuard failed-order workflow | Stripe webhook event `payment_intent.payment_failed` |
+| Notifications (both apps) | `SLACK_WEBHOOK_URL` |
 
-# JWT
-JWT_SECRET=your_secret_here
-
-# API
-API_PORT=3001
-API_URL=http://localhost:3001
-
-# Dashboard
-NEXT_PUBLIC_API_URL=http://localhost:3001
-```
-
-## 🛠️ Development
-
-### Available Scripts
+With the Stripe CLI you can forward test events locally:
 
 ```bash
-# Development mode (all workspaces)
-npm run dev
-
-# Build all packages
-npm run build
-
-# Type checking
-npm run type-check
-
-# Linting
-npm run lint
-
-# Clean node_modules
-npm run clean
+stripe listen --forward-to localhost:3001/api/webhooks/stripe   # prints the whsec_ secret
+stripe trigger charge.failed
 ```
 
-### Working with Workspaces
+### Custom webhooks
+
+Workflows with a `webhook` trigger and no event name get their own URL and signing secret (shown on the workflow page). Sign the raw body:
 
 ```bash
-# Run command in specific workspace
-npm run dev -w @athena/core
-
-# Install dependency in specific workspace
-npm install axios -w @athena/api
-
-# Run script in all workspaces
-npm run build --workspaces
+BODY='{"event":"uptime.down","service":"api"}'
+SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | sed 's/^.* //')
+curl -X POST "$URL" -H 'content-type: application/json' -H "x-athena-signature: sha256=$SIG" -d "$BODY"
 ```
 
-## 🎭 Demo Applications
+## Building a new application
 
-### MoneyGuard - Financial Operations Agent
+An application is an object implementing `AthenaApplication` from `@athena/core`:
 
-Monitors transaction events, investigates suspicious activity, and executes approved financial actions.
-
-**Features:**
-- Transaction event monitoring
-- Risk rule evaluation
-- Customer profile analysis
-- Fraud pattern detection
-- Human approval for sensitive actions
-- Complete audit trail
-
-### OpsGuard - Business Operations Agent
-
-Responds to operational events, diagnoses issues, and coordinates incident response.
-
-**Features:**
-- Operational event monitoring
-- Multi-system information gathering
-- Root cause identification
-- Incident summarization
-- Team notifications
-- Task/ticket management
-
-## 📚 Documentation
-
-- [Complete Specification](./athena-spec.md) - Full project requirements and architecture
-- [API Documentation](./docs/api/) - Backend API reference
-- [Architecture Diagrams](./docs/architecture/) - System design and data flow
-
-## 🔒 Security
-
-- Tool permissions and access control
-- Human approval for sensitive actions
-- JWT-based authentication
-- Input validation and sanitization
-- Secure secrets management
-- Comprehensive audit logging
-
-## 🧪 Testing
-
-```bash
-# Run tests (when implemented)
-npm test
-
-# Run tests in watch mode
-npm test -- --watch
+```ts
+export const myApp: AthenaApplication = {
+  id: 'myapp',
+  name: 'MyApp',
+  tagline: '…',
+  description: '…',
+  tools: [myTool, sendNotificationTool],   // Tool objects with Zod schemas
+  agent: { name, description, systemPrompt, permissions, tools: ['my_tool', 'send_notification'] },
+  workflows: [/* WorkflowTemplate[] */],
+  env: [{ name: 'MYAPP_API_KEY', description: '…' }],
+};
 ```
 
-## 📝 Tech Stack
+Register it in `apps/api/src/index.ts` with `registerApplication(myApp)`. It then appears in the dashboard and can be installed.
 
-- **Frontend**: Next.js 14, React 18, TypeScript, Tailwind CSS
-- **Backend**: Node.js 20, Express, TypeScript
-- **Database**: MongoDB with Mongoose
-- **AI/LLM**: Anthropic Claude or Groq
-- **Real-time**: WebSocket
-- **Authentication**: JWT + bcrypt
-- **Validation**: Zod
-- **Monorepo**: npm workspaces
+## Security
 
-## 🎯 MVP Scope
+- Passwords hashed with bcrypt (12 rounds). Sessions are JWTs in httpOnly cookies. Login and registration are rate limited.
+- All resources are scoped to their owner; other users get 404.
+- Tools declare required permissions; the runtime denies calls the agent is not granted.
+- `permissionLevel: 'high'` tools always need human approval. Approvals are owner-only, single-use, and expire after 30 minutes.
+- Webhooks are verified (Stripe signature with timestamp tolerance, GitHub HMAC, per-workflow HMAC) and de-duplicated.
+- OpsGuard can only reach configured URLs (no redirects) and read configured log files.
+- Refunds and flags use Stripe idempotency keys.
+- The logger redacts keys containing password, token, secret, apikey, authorization, or cookie.
 
-### Core Features
-- [x] Project structure and configuration
-- [ ] Agent runtime with LLM integration
-- [ ] Tool registry and execution
-- [ ] Workflow engine
-- [ ] Permission system
-- [ ] Human approval flow
-- [ ] Memory system
-- [ ] Event system
-- [ ] Real-time execution monitoring
-- [ ] Web dashboard
-- [ ] MoneyGuard application
-- [ ] OpsGuard application
-- [ ] User authentication
+## Scripts
 
-## 🤝 Contributing
+| Command | Description |
+|---|---|
+| `npm run build` | Build all packages and the dashboard, in dependency order |
+| `npm run build:backend` | Build everything except the dashboard |
+| `npm run dev:api` / `npm run dev:dashboard` | Development servers |
+| `npm run start:api` / `npm run start:dashboard` | Run production builds |
+| `npm run type-check` / `npm run lint` | Checks |
 
-This is a hackathon project for Kiro's Skeleton Crew category. Development is tracked through Kiro specs and sessions.
+See [docs/deployment.md](docs/deployment.md) for deployment and [docs/demo/demo-script.md](docs/demo/demo-script.md) for the demo walkthrough.
 
-## 📄 License
+## Known limitations
 
-MIT
+- Executions run in the API process. If the API restarts mid-execution, in-flight executions are marked failed on startup. There is no job queue.
+- Run a single API instance: the event bus and webhook de-duplication are in memory.
+- Integration credentials are server-wide environment variables, not per user.
+- No automated test suite is checked in yet.
 
-## 🏆 Hackathon
-
-**Category**: Skeleton Crew  
-**Deadline**: Friday, December 4, 2026 at 2 PM PT  
-**Goal**: Build a reusable agent skeleton and demonstrate it with two distinct applications
-
----
-
-Built with [Kiro](https://kiro.dev) - AI-powered development environment
+Built with [Kiro](https://kiro.dev) for the Kiro Skeleton Crew hackathon.

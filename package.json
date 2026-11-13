@@ -4,21 +4,33 @@
   "private": true,
   "description": "Athena - Reusable AI Agent Framework",
   "workspaces": [
-    "packages/*",
-    "apps/*"
+    "packages/shared",
+    "packages/database",
+    "packages/core",
+    "packages/integrations",
+    "apps/moneyguard",
+    "apps/opsguard",
+    "apps/api",
+    "apps/dashboard"
   ],
   "scripts": {
-    "dev": "npm run dev --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build:backend && npm run build -w @athena/dashboard",
+    "build:backend": "npm run build -w @athena/shared -w @athena/database -w @athena/core -w @athena/integrations -w @athena/moneyguard -w @athena/opsguard -w @athena/api",
+    "dev:api": "npm run build:backend && npm run dev -w @athena/api",
+    "dev:dashboard": "npm run dev -w @athena/dashboard",
+    "start:api": "npm run start -w @athena/api",
+    "start:dashboard": "npm run start -w @athena/dashboard",
     "lint": "npm run lint --workspaces --if-present",
-    "type-check": "npm run type-check --workspaces --if-present",
-    "clean": "rm -rf node_modules && rm -rf packages/*/node_modules && rm -rf apps/*/node_modules"
+    "type-check": "npm run build:backend && npm run type-check -w @athena/dashboard",
+    "clean": "rm -rf packages/*/dist apps/*/dist apps/dashboard/.next packages/*/tsconfig.tsbuildinfo apps/*/tsconfig.tsbuildinfo"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
-    "typescript": "^5.3.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
     "eslint": "^8.55.0",
-    "prettier": "^3.1.0"
+    "prettier": "^3.1.0",
+    "typescript": "^5.3.0"
   },
   "engines": {
     "node": ">=20.0.0",

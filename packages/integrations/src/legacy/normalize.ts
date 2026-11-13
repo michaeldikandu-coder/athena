@@ -59,7 +59,7 @@ export function normalizeRecord(
 
   for (const field of options.numeric ?? []) {
     if (out[field] !== undefined && out[field] !== '') {
-      const n = Number(String(out[field]).replace(/[^0-9.\-]/g, ''));
+      const n = Number(String(out[field]).replace(/[^0-9.-]/g, ''));
       out[field] = Number.isFinite(n) ? n : null;
     }
   }

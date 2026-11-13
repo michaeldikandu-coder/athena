@@ -4,8 +4,8 @@
  * values are stringified. Only dotted property paths are supported (no code).
  */
 
-const FULL_TEMPLATE = /^\{\{\s*([a-zA-Z0-9_.\-\[\]]+)\s*\}\}$/;
-const INLINE_TEMPLATE = /\{\{\s*([a-zA-Z0-9_.\-\[\]]+)\s*\}\}/g;
+const FULL_TEMPLATE = /^\{\{\s*([a-zA-Z0-9_.[\]-]+)\s*\}\}$/;
+const INLINE_TEMPLATE = /\{\{\s*([a-zA-Z0-9_.[\]-]+)\s*\}\}/g;
 
 export function getPath(source: unknown, path: string): unknown {
   const parts = path.replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean);
