@@ -1,7 +1,6 @@
 import { Schema } from 'mongoose';
 
 export interface IMemory {
-  _id: string;
   agentId: string;
   executionId?: string;
   type: 'context' | 'conversation' | 'fact' | 'decision';

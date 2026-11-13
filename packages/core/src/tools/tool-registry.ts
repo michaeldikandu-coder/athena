@@ -1,5 +1,7 @@
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import {
   Tool,
+  ToolDescriptor,
   ToolRegistrationOptions,
   ToolExecutionOptions,
   ToolExecutionResult,
@@ -11,10 +13,16 @@ import {
   ConflictError,
   logger,
   ToolContext,
+  PermissionLevel,
 } from '@athena/shared';
 
+const TOOL_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
+const DEFAULT_TIMEOUT_MS = 30000;
+
 /**
- * Tool Registry - Manages tool registration and execution
+ * Tool Registry - Manages tool registration, description, and execution.
+ * Permission and approval checks happen in the AgentRuntime, which owns the
+ * execution context; the registry only validates input and runs handlers.
  */
 export class ToolRegistry {
   private tools: Map<string, Tool> = new Map();
@@ -29,37 +37,22 @@ export class ToolRegistry {
     return ToolRegistry.instance;
   }
 
-  /**
-   * Register a tool
-   */
   register(tool: Tool, options: ToolRegistrationOptions = {}): void {
-    const { override = false } = options;
-
-    if (this.tools.has(tool.id) && !override) {
+    if (this.tools.has(tool.id) && !options.override) {
       throw new ConflictError(`Tool already registered: ${tool.id}`, { toolId: tool.id });
     }
-
-    // Validate tool definition
     this.validateTool(tool);
-
     this.tools.set(tool.id, tool);
-    logger.info(`Tool registered: ${tool.id}`, {
+    logger.debug(`Tool registered: ${tool.id}`, {
       toolId: tool.id,
-      name: tool.name,
       permissionLevel: tool.permissionLevel,
     });
   }
 
-  /**
-   * Register multiple tools
-   */
   registerMany(tools: Tool[], options: ToolRegistrationOptions = {}): void {
     tools.forEach((tool) => this.register(tool, options));
   }
 
-  /**
-   * Get a tool by ID
-   */
   get(toolId: string): Tool {
     const tool = this.tools.get(toolId);
     if (!tool) {
@@ -68,189 +61,154 @@ export class ToolRegistry {
     return tool;
   }
 
-  /**
-   * Check if a tool exists
-   */
   has(toolId: string): boolean {
     return this.tools.has(toolId);
   }
 
-  /**
-   * Get all registered tools
-   */
   getAll(): Tool[] {
     return Array.from(this.tools.values());
   }
 
-  /**
-   * Get tools by category
-   */
   getByCategory(category: string): Tool[] {
     return this.getAll().filter((tool) => tool.category === category);
   }
 
-  /**
-   * Get tools by permission level
-   */
-  getByPermissionLevel(level: 'low' | 'medium' | 'high'): Tool[] {
+  getByPermissionLevel(level: PermissionLevel): Tool[] {
     return this.getAll().filter((tool) => tool.permissionLevel === level);
   }
 
-  /**
-   * Remove a tool
-   */
   unregister(toolId: string): boolean {
-    const existed = this.tools.has(toolId);
-    this.tools.delete(toolId);
-    if (existed) {
-      logger.info(`Tool unregistered: ${toolId}`, { toolId });
-    }
-    return existed;
+    return this.tools.delete(toolId);
   }
 
-  /**
-   * Clear all tools
-   */
   clear(): void {
     this.tools.clear();
-    logger.info('All tools cleared from registry');
+  }
+
+  get size(): number {
+    return this.tools.size;
   }
 
   /**
-   * Execute a tool
+   * Whether calling this tool needs a human approval
+   */
+  requiresApproval(toolId: string): boolean {
+    const tool = this.get(toolId);
+    return tool.permissionLevel === 'high' || tool.requiresApproval;
+  }
+
+  /**
+   * Validate input against the tool schema, returning the parsed value
+   */
+  validateInput(toolId: string, input: unknown): any {
+    const tool = this.get(toolId);
+    const result = tool.inputSchema.safeParse(input);
+    if (!result.success) {
+      throw new ToolValidationError(tool.id, result.error.errors);
+    }
+    return result.data;
+  }
+
+  /**
+   * Execute a tool. Input is validated before the handler runs.
    */
   async execute<TOutput = any>(
     toolId: string,
-    input: any,
+    input: unknown,
     context: ToolContext,
     options: ToolExecutionOptions = {}
   ): Promise<ToolExecutionResult<TOutput>> {
     const startTime = Date.now();
     const tool = this.get(toolId);
-
-    logger.debug(`Executing tool: ${toolId}`, {
-      toolId,
-      executionId: context.executionId,
-      input,
-    });
+    const validatedInput = this.validateInput(toolId, input);
 
     try {
-      // Validate input
-      const validatedInput = this.validateInput(tool, input);
-
-      // Execute tool handler with timeout
-      const result = await this.executeWithTimeout(
+      const result = await this.withTimeout(
         tool.handler(validatedInput, context),
-        options.timeout || 30000
+        options.timeout ?? DEFAULT_TIMEOUT_MS,
+        toolId
       );
-
       const executionTime = Date.now() - startTime;
 
-      logger.info(`Tool executed successfully: ${toolId}`, {
+      logger.info(`Tool executed: ${toolId}`, {
         toolId,
         executionId: context.executionId,
         executionTime,
         success: result.success,
       });
 
-      return {
-        ...result,
-        tool: toolId,
-        executionTime,
-        timestamp: new Date(),
-      };
+      return { ...result, tool: toolId, executionTime, timestamp: new Date() };
     } catch (error) {
-      const executionTime = Date.now() - startTime;
-
       logger.error(`Tool execution failed: ${toolId}`, error as Error, {
         toolId,
         executionId: context.executionId,
-        executionTime,
       });
-
-      if (error instanceof ToolValidationError) {
-        throw error;
-      }
-
       throw new ToolExecutionError(toolId, error as Error);
     }
   }
 
   /**
-   * Validate tool definition
+   * Describe a tool with its input schema converted to JSON Schema
    */
-  private validateTool(tool: Tool): void {
-    if (!tool.id || typeof tool.id !== 'string') {
-      throw new Error('Tool must have a valid ID');
-    }
+  describe(toolId: string): ToolDescriptor {
+    const tool = this.get(toolId);
+    // Cast avoids a TS deep-instantiation error from zod-to-json-schema's generics
+    const jsonSchema = (zodToJsonSchema as (schema: unknown, options: object) => object)(tool.inputSchema, {
+      target: 'jsonSchema7',
+      $refStrategy: 'none',
+    }) as Record<string, unknown>;
+    delete jsonSchema.$schema;
 
-    if (!tool.name || typeof tool.name !== 'string') {
-      throw new Error('Tool must have a valid name');
-    }
-
-    if (!tool.description || typeof tool.description !== 'string') {
-      throw new Error('Tool must have a description');
-    }
-
-    if (!tool.inputSchema) {
-      throw new Error('Tool must have an input schema');
-    }
-
-    if (typeof tool.handler !== 'function') {
-      throw new Error('Tool must have a handler function');
-    }
-
-    if (!['low', 'medium', 'high'].includes(tool.permissionLevel)) {
-      throw new Error('Tool must have a valid permission level');
-    }
-  }
-
-  /**
-   * Validate tool input against schema
-   */
-  private validateInput(tool: Tool, input: any): any {
-    try {
-      return tool.inputSchema.parse(input);
-    } catch (error) {
-      throw new ToolValidationError(tool.id, error);
-    }
-  }
-
-  /**
-   * Execute a promise with timeout
-   */
-  private async executeWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-    return Promise.race([
-      promise,
-      new Promise<T>((_, reject) =>
-        setTimeout(() => reject(new Error(`Tool execution timeout after ${timeoutMs}ms`)), timeoutMs)
-      ),
-    ]);
-  }
-
-  /**
-   * Get tool count
-   */
-  get size(): number {
-    return this.tools.size;
-  }
-
-  /**
-   * Export tools as JSON (for serialization)
-   */
-  toJSON(): any[] {
-    return this.getAll().map((tool) => ({
+    return {
       id: tool.id,
       name: tool.name,
       description: tool.description,
-      inputSchema: tool.inputSchema,
+      inputSchema: jsonSchema,
       permissionLevel: tool.permissionLevel,
-      requiresApproval: tool.requiresApproval,
+      requiredPermissions: tool.requiredPermissions,
+      requiresApproval: this.requiresApproval(tool.id),
       category: tool.category,
-      metadata: tool.metadata,
-    }));
+    };
+  }
+
+  describeAll(): ToolDescriptor[] {
+    return this.getAll().map((tool) => this.describe(tool.id));
+  }
+
+  private validateTool(tool: Tool): void {
+    if (!tool.id || !TOOL_ID_PATTERN.test(tool.id)) {
+      throw new Error(`Tool id must match ${TOOL_ID_PATTERN}: ${tool.id}`);
+    }
+    if (!tool.name) {
+      throw new Error(`Tool ${tool.id} must have a name`);
+    }
+    if (!tool.description) {
+      throw new Error(`Tool ${tool.id} must have a description`);
+    }
+    if (!tool.inputSchema) {
+      throw new Error(`Tool ${tool.id} must have an input schema`);
+    }
+    if (typeof tool.handler !== 'function') {
+      throw new Error(`Tool ${tool.id} must have a handler function`);
+    }
+    if (!['low', 'medium', 'high'].includes(tool.permissionLevel)) {
+      throw new Error(`Tool ${tool.id} has an invalid permission level`);
+    }
+    if (!Array.isArray(tool.requiredPermissions)) {
+      throw new Error(`Tool ${tool.id} must declare requiredPermissions`);
+    }
+  }
+
+  private withTimeout<T>(promise: Promise<T>, timeoutMs: number, toolId: string): Promise<T> {
+    let timer: NodeJS.Timeout;
+    const timeout = new Promise<T>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`Tool ${toolId} timed out after ${timeoutMs}ms`)),
+        timeoutMs
+      );
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
   }
 }
 
-// Export singleton instance
 export const toolRegistry = ToolRegistry.getInstance();

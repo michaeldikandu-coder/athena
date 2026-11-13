@@ -8,11 +8,15 @@ export interface IModelConfig {
 }
 
 export interface IAgent {
-  _id: string;
   name: string;
   description: string;
   systemPrompt: string;
   modelConfig: IModelConfig;
+  /** Permission grants such as "read:transactions" or "write:*" */
+  permissions: string[];
+  /** Application that installed this agent, e.g. "moneyguard". Empty for custom agents. */
+  application?: string;
+  maxIterations: number;
   status: 'active' | 'inactive' | 'error';
   userId: string;
   createdAt: Date;
@@ -65,6 +69,20 @@ export const AgentSchema = new Schema<IAgent>(
     modelConfig: {
       type: ModelConfigSchema,
       required: true,
+    },
+    permissions: {
+      type: [String],
+      default: [],
+    },
+    application: {
+      type: String,
+      index: true,
+    },
+    maxIterations: {
+      type: Number,
+      min: 1,
+      max: 50,
+      default: 15,
     },
     status: {
       type: String,

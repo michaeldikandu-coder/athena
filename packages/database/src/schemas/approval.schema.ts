@@ -7,9 +7,9 @@ export interface IApprovalRequestedAction {
 }
 
 export interface IApproval {
-  _id: string;
   executionId: string;
   agentId: string;
+  userId: string;
   requestedAction: IApprovalRequestedAction;
   status: 'pending' | 'approved' | 'rejected' | 'expired';
   reviewerId?: string;
@@ -47,6 +47,11 @@ export const ApprovalSchema = new Schema<IApproval>(
       index: true,
     },
     agentId: {
+      type: String,
+      required: true,
+      index: true,
+    },
+    userId: {
       type: String,
       required: true,
       index: true,

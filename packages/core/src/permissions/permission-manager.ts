@@ -1,26 +1,33 @@
 import { PermissionDeniedError, logger } from '@athena/shared';
 
-export interface Permission {
-  resource: string;
-  action: string;
-  conditions?: Record<string, any>;
-}
-
+/**
+ * Permissions are strings of the form "action:resource", for example
+ * "read:transactions" or "write:tickets". Either segment may be "*".
+ * The special grant "admin" (or "*") matches everything.
+ */
 export interface PermissionCheck {
   agentId: string;
   userId: string;
-  permissions: string[];
-  resource: string;
+  /** Permissions granted to the agent */
+  granted: string[];
+  /** Permissions the action requires (all must be satisfied) */
+  required: string[];
+  /** Description of the action, used in errors and logs */
   action: string;
 }
 
+export interface PermissionCheckResult {
+  allowed: boolean;
+  missing: string[];
+}
+
 /**
- * Permission Manager - Handles permission checking and validation
+ * Permission Manager - evaluates agent permission grants against requirements.
+ * Evaluation is pure and cheap, so results are not cached; this keeps grant
+ * changes effective immediately.
  */
 export class PermissionManager {
   private static instance: PermissionManager;
-  private permissionCache: Map<string, boolean> = new Map();
-  private cacheTimeout = 5 * 60 * 1000; // 5 minutes
 
   private constructor() {}
 
@@ -32,149 +39,64 @@ export class PermissionManager {
   }
 
   /**
-   * Check if a permission is granted
+   * Check whether one granted permission covers one required permission
    */
-  async check(check: PermissionCheck): Promise<boolean> {
-    const cacheKey = this.getCacheKey(check);
-    const cached = this.permissionCache.get(cacheKey);
-
-    if (cached !== undefined) {
-      return cached;
+  matches(granted: string, required: string): boolean {
+    if (granted === 'admin' || granted === '*' || granted === '*:*') {
+      return true;
     }
+    const [gAction, gResource] = this.parse(granted);
+    const [rAction, rResource] = this.parse(required);
+    const actionOk = gAction === '*' || gAction === rAction;
+    const resourceOk = gResource === '*' || gResource === rResource;
+    return actionOk && resourceOk;
+  }
 
-    const granted = this.evaluatePermission(check);
-
-    // Cache the result
-    this.permissionCache.set(cacheKey, granted);
-    setTimeout(() => this.permissionCache.delete(cacheKey), this.cacheTimeout);
+  /**
+   * Evaluate a permission check without throwing
+   */
+  check(check: PermissionCheck): PermissionCheckResult {
+    const missing = check.required.filter(
+      (req) => !check.granted.some((grant) => this.matches(grant, req))
+    );
+    const allowed = missing.length === 0;
 
     logger.debug('Permission check', {
       agentId: check.agentId,
-      resource: check.resource,
       action: check.action,
-      granted,
+      allowed,
+      missing,
     });
 
-    return granted;
+    return { allowed, missing };
   }
 
   /**
-   * Assert that a permission is granted, throw if not
+   * Assert a permission check passes, throwing PermissionDeniedError otherwise
    */
-  async assert(check: PermissionCheck): Promise<void> {
-    const granted = await this.check(check);
-
-    if (!granted) {
-      const action = `${check.action}:${check.resource}`;
+  assert(check: PermissionCheck): void {
+    const result = this.check(check);
+    if (!result.allowed) {
       logger.warn('Permission denied', {
         agentId: check.agentId,
         userId: check.userId,
-        action,
+        action: check.action,
+        missing: result.missing,
       });
-      throw new PermissionDeniedError(action, 'Insufficient permissions');
+      throw new PermissionDeniedError(
+        check.action,
+        `Missing permissions: ${result.missing.join(', ')}`
+      );
     }
   }
 
-  /**
-   * Check if agent has permission to use a tool
-   */
-  async checkToolPermission(
-    agentId: string,
-    userId: string,
-    toolId: string,
-    requiredPermissions: string[]
-  ): Promise<boolean> {
-    return this.check({
-      agentId,
-      userId,
-      permissions: requiredPermissions,
-      resource: 'tool',
-      action: toolId,
-    });
-  }
-
-  /**
-   * Evaluate permission based on rules
-   */
-  private evaluatePermission(check: PermissionCheck): boolean {
-    const requiredPermission = `${check.action}:${check.resource}`;
-
-    // Check for exact match
-    if (check.permissions.includes(requiredPermission)) {
-      return true;
+  private parse(permission: string): [string, string] {
+    const idx = permission.indexOf(':');
+    if (idx === -1) {
+      return [permission, '*'];
     }
-
-    // Check for wildcard permissions
-    if (check.permissions.includes(`${check.action}:*`)) {
-      return true;
-    }
-
-    if (check.permissions.includes(`*:${check.resource}`)) {
-      return true;
-    }
-
-    if (check.permissions.includes('*:*')) {
-      return true;
-    }
-
-    // Check for admin permission
-    if (check.permissions.includes('admin')) {
-      return true;
-    }
-
-    return false;
-  }
-
-  /**
-   * Generate cache key
-   */
-  private getCacheKey(check: PermissionCheck): string {
-    return `${check.agentId}:${check.resource}:${check.action}`;
-  }
-
-  /**
-   * Clear permission cache
-   */
-  clearCache(): void {
-    this.permissionCache.clear();
-    logger.debug('Permission cache cleared');
-  }
-
-  /**
-   * Clear cache for specific agent
-   */
-  clearAgentCache(agentId: string): void {
-    for (const key of this.permissionCache.keys()) {
-      if (key.startsWith(`${agentId}:`)) {
-        this.permissionCache.delete(key);
-      }
-    }
-    logger.debug('Agent permission cache cleared', { agentId });
-  }
-
-  /**
-   * Get all permissions for a resource
-   */
-  getResourcePermissions(resource: string): string[] {
-    const actions = ['read', 'write', 'delete', 'execute'];
-    return actions.map((action) => `${action}:${resource}`);
-  }
-
-  /**
-   * Parse permission string
-   */
-  parsePermission(permission: string): { action: string; resource: string } {
-    const [action, resource] = permission.split(':');
-    return { action: action || '*', resource: resource || '*' };
-  }
-
-  /**
-   * Format permission string
-   */
-  formatPermission(action: string, resource: string): string {
-    return `${action}:${resource}`;
+    return [permission.slice(0, idx) || '*', permission.slice(idx + 1) || '*'];
   }
 }
 
-// Export singleton instance
 export const permissionManager = PermissionManager.getInstance();

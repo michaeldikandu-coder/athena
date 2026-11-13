@@ -82,8 +82,8 @@ export class PermissionDeniedError extends PermissionError {
  * Approval-related errors
  */
 export class ApprovalError extends AppError {
-  constructor(message: string, options?: { context?: Record<string, any> }) {
-    super(message, { ...options, statusCode: 403 });
+  constructor(message: string, options?: { context?: Record<string, any>; statusCode?: number }) {
+    super(message, { statusCode: 403, ...options });
   }
 }
 
@@ -127,8 +127,11 @@ export class WorkflowStepError extends WorkflowError {
  * Agent-related errors
  */
 export class AgentError extends AppError {
-  constructor(message: string, options?: { context?: Record<string, any>; cause?: Error }) {
-    super(message, { ...options, statusCode: 400 });
+  constructor(
+    message: string,
+    options?: { context?: Record<string, any>; cause?: Error; statusCode?: number }
+  ) {
+    super(message, { statusCode: 400, ...options });
   }
 }
 

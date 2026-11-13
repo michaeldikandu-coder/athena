@@ -1,15 +1,11 @@
 import { ApprovalModel, IApproval } from '@athena/database';
-import {
-  ApprovalDeniedError,
-  ApprovalExpiredError,
-  ApprovalPendingError,
-  NotFoundError,
-  logger,
-} from '@athena/shared';
+import { ApprovalExpiredError, ConflictError, NotFoundError, logger } from '@athena/shared';
+import { eventBus } from '../events/event-bus';
 
 export interface ApprovalRequest {
   executionId: string;
   agentId: string;
+  userId: string;
   tool: string;
   input: Record<string, any>;
   reason: string;
@@ -23,12 +19,24 @@ export interface ApprovalDecision {
   comment?: string;
 }
 
+export type ApprovalDoc = IApproval & { _id: unknown };
+
+export type ApprovalOutcome =
+  | { status: 'approved'; approval: ApprovalDoc }
+  | { status: 'rejected'; approval: ApprovalDoc }
+  | { status: 'expired'; approval: ApprovalDoc }
+  | { status: 'cancelled' };
+
+const DEFAULT_EXPIRY_MS = 30 * 60 * 1000;
+const POLL_INTERVAL_MS = 5000;
+
 /**
- * Approval Manager - Handles human approval workflow
+ * Approval Manager - human-in-the-loop decisions for sensitive tool calls.
+ * Decisions wake waiting executions through the event bus; a slow DB poll
+ * is kept as a fallback in case a decision is written by another process.
  */
 export class ApprovalManager {
   private static instance: ApprovalManager;
-  private readonly DEFAULT_EXPIRY_MS = 30 * 60 * 1000; // 30 minutes
 
   private constructor() {}
 
@@ -39,230 +47,162 @@ export class ApprovalManager {
     return ApprovalManager.instance;
   }
 
-  /**
-   * Request approval for an action
-   */
-  async requestApproval(request: ApprovalRequest): Promise<IApproval> {
-    const expiresAt = new Date(Date.now() + (request.expiresInMs || this.DEFAULT_EXPIRY_MS));
-
-    const approval = await ApprovalModel.create({
+  async requestApproval(request: ApprovalRequest): Promise<ApprovalDoc> {
+    const expiresAt = new Date(Date.now() + (request.expiresInMs ?? DEFAULT_EXPIRY_MS));
+    const doc = await ApprovalModel.create({
       executionId: request.executionId,
       agentId: request.agentId,
-      requestedAction: {
-        tool: request.tool,
-        input: request.input,
-        reason: request.reason,
-      },
+      userId: request.userId,
+      requestedAction: { tool: request.tool, input: request.input, reason: request.reason },
       status: 'pending',
       requestedAt: new Date(),
       expiresAt,
     });
+    const approval = doc.toObject() as ApprovalDoc;
 
-    logger.info('Approval requested', {
-      approvalId: approval._id,
+    eventBus.emit('approval.requested', {
+      userId: request.userId,
+      approvalId: String(approval._id),
       executionId: request.executionId,
       tool: request.tool,
-      expiresAt,
     });
-
+    logger.info('Approval requested', {
+      approvalId: String(approval._id),
+      executionId: request.executionId,
+      tool: request.tool,
+    });
     return approval;
   }
 
   /**
-   * Wait for approval decision
+   * Resolve once the approval is decided, expires, or isCancelled() returns true.
    */
-  async waitForApproval(
-    approvalId: string,
-    options: {
-      pollIntervalMs?: number;
-      timeoutMs?: number;
-    } = {}
-  ): Promise<IApproval> {
-    const { pollIntervalMs = 2000, timeoutMs = 5 * 60 * 1000 } = options;
-    const startTime = Date.now();
+  waitForDecision(approvalId: string, isCancelled: () => Promise<boolean>): Promise<ApprovalOutcome> {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let pollTimer: NodeJS.Timeout | undefined;
 
-    while (true) {
-      const approval = await ApprovalModel.findById(approvalId);
+      const finish = (outcome: ApprovalOutcome | Error): void => {
+        if (settled) return;
+        settled = true;
+        unsubscribe();
+        if (pollTimer) clearTimeout(pollTimer);
+        if (outcome instanceof Error) reject(outcome);
+        else resolve(outcome);
+      };
 
-      if (!approval) {
-        throw new NotFoundError('Approval', approvalId);
-      }
+      const evaluate = async (): Promise<void> => {
+        try {
+          const approval = (await ApprovalModel.findById(approvalId).lean()) as ApprovalDoc | null;
+          if (!approval) return finish(new NotFoundError('Approval', approvalId));
 
-      // Check if expired
-      if (new Date() > approval.expiresAt) {
-        if (approval.status === 'pending') {
-          await ApprovalModel.findByIdAndUpdate(approvalId, { status: 'expired' });
+          if (approval.status === 'pending' && new Date() > new Date(approval.expiresAt)) {
+            await ApprovalModel.updateOne(
+              { _id: approvalId, status: 'pending' },
+              { status: 'expired' }
+            );
+            return finish({ status: 'expired', approval: { ...approval, status: 'expired' } });
+          }
+          if (approval.status === 'approved') return finish({ status: 'approved', approval });
+          if (approval.status === 'rejected') return finish({ status: 'rejected', approval });
+          if (approval.status === 'expired') return finish({ status: 'expired', approval });
+          if (await isCancelled()) {
+            await ApprovalModel.updateOne(
+              { _id: approvalId, status: 'pending' },
+              { status: 'expired', reviewerComment: 'Execution cancelled' }
+            );
+            return finish({ status: 'cancelled' });
+          }
+          pollTimer = setTimeout(() => void evaluate(), POLL_INTERVAL_MS);
+        } catch (error) {
+          finish(error as Error);
         }
-        throw new ApprovalExpiredError(approvalId);
-      }
+      };
 
-      // Check if decided
-      if (approval.status === 'approved') {
-        logger.info('Approval granted', {
-          approvalId,
-          reviewerId: approval.reviewerId,
-        });
-        return approval;
-      }
+      const unsubscribe = eventBus.on('approval.decided', (event) => {
+        if (event.approvalId === approvalId) {
+          if (pollTimer) clearTimeout(pollTimer);
+          void evaluate();
+        }
+      });
 
-      if (approval.status === 'rejected') {
-        logger.warn('Approval rejected', {
-          approvalId,
-          reviewerId: approval.reviewerId,
-          reason: approval.reviewerComment,
-        });
-        throw new ApprovalDeniedError(approval.reviewerComment);
-      }
-
-      if (approval.status === 'expired') {
-        throw new ApprovalExpiredError(approvalId);
-      }
-
-      // Check timeout
-      if (Date.now() - startTime > timeoutMs) {
-        throw new Error(`Approval wait timeout after ${timeoutMs}ms`);
-      }
-
-      // Wait before next poll
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-    }
+      void evaluate();
+    });
   }
 
   /**
-   * Make an approval decision
+   * Record a reviewer decision. Only the approval owner may decide; the caller
+   * must pass the authenticated user's id as reviewerId.
    */
-  async decide(decision: ApprovalDecision): Promise<IApproval> {
-    const approval = await ApprovalModel.findById(decision.approvalId);
-
-    if (!approval) {
+  async decide(decision: ApprovalDecision, ownerUserId: string): Promise<ApprovalDoc> {
+    const approval = (await ApprovalModel.findById(decision.approvalId).lean()) as ApprovalDoc | null;
+    if (!approval || approval.userId !== ownerUserId) {
       throw new NotFoundError('Approval', decision.approvalId);
     }
-
-    // Check if already decided
     if (approval.status !== 'pending') {
-      throw new Error(`Approval already ${approval.status}`);
+      throw new ConflictError(`Approval already ${approval.status}`);
     }
-
-    // Check if expired
-    if (new Date() > approval.expiresAt) {
-      await ApprovalModel.findByIdAndUpdate(decision.approvalId, { status: 'expired' });
+    if (new Date() > new Date(approval.expiresAt)) {
+      await ApprovalModel.updateOne({ _id: decision.approvalId }, { status: 'expired' });
       throw new ApprovalExpiredError(decision.approvalId);
     }
 
-    // Update approval
-    const updated = await ApprovalModel.findByIdAndUpdate(
-      decision.approvalId,
+    const status = decision.approved ? 'approved' : 'rejected';
+    // Conditional update prevents two concurrent decisions from both succeeding
+    const updated = (await ApprovalModel.findOneAndUpdate(
+      { _id: decision.approvalId, status: 'pending' },
       {
-        status: decision.approved ? 'approved' : 'rejected',
+        status,
         reviewerId: decision.reviewerId,
         reviewerComment: decision.comment,
         reviewedAt: new Date(),
       },
       { new: true }
-    );
+    ).lean()) as ApprovalDoc | null;
 
-    logger.info('Approval decision made', {
+    if (!updated) {
+      throw new ConflictError('Approval was decided concurrently');
+    }
+
+    eventBus.emit('approval.decided', {
+      userId: approval.userId,
       approvalId: decision.approvalId,
-      approved: decision.approved,
-      reviewerId: decision.reviewerId,
+      executionId: approval.executionId,
+      status,
     });
-
-    return updated!;
+    logger.info('Approval decided', { approvalId: decision.approvalId, status });
+    return updated;
   }
 
-  /**
-   * Get approval by ID
-   */
-  async getApproval(approvalId: string): Promise<IApproval | null> {
-    return ApprovalModel.findById(approvalId);
+  async getApproval(approvalId: string, userId: string): Promise<ApprovalDoc | null> {
+    const approval = (await ApprovalModel.findById(approvalId).lean()) as ApprovalDoc | null;
+    return approval && approval.userId === userId ? approval : null;
   }
 
-  /**
-   * Get pending approvals
-   */
-  async getPendingApprovals(filters: {
-    agentId?: string;
+  async list(filters: {
+    userId: string;
+    status?: IApproval['status'];
     executionId?: string;
     limit?: number;
-  } = {}): Promise<IApproval[]> {
-    const query: any = { status: 'pending', expiresAt: { $gt: new Date() } };
+  }): Promise<ApprovalDoc[]> {
+    const query: Record<string, any> = { userId: filters.userId };
+    if (filters.status) query.status = filters.status;
+    if (filters.executionId) query.executionId = filters.executionId;
+    if (filters.status === 'pending') query.expiresAt = { $gt: new Date() };
 
-    if (filters.agentId) {
-      query.agentId = filters.agentId;
-    }
-
-    if (filters.executionId) {
-      query.executionId = filters.executionId;
-    }
-
-    return ApprovalModel.find(query)
+    return (await ApprovalModel.find(query)
       .sort({ requestedAt: -1 })
-      .limit(filters.limit || 50);
+      .limit(Math.min(filters.limit ?? 50, 200))
+      .lean()) as ApprovalDoc[];
   }
 
-  /**
-   * Get approval history for an execution
-   */
-  async getExecutionApprovals(executionId: string): Promise<IApproval[]> {
-    return ApprovalModel.find({ executionId }).sort({ requestedAt: 1 });
-  }
-
-  /**
-   * Cancel an approval request
-   */
-  async cancel(approvalId: string): Promise<void> {
-    const approval = await ApprovalModel.findById(approvalId);
-
-    if (!approval) {
-      throw new NotFoundError('Approval', approvalId);
-    }
-
-    if (approval.status !== 'pending') {
-      throw new Error(`Cannot cancel approval with status: ${approval.status}`);
-    }
-
-    await ApprovalModel.findByIdAndUpdate(approvalId, { status: 'expired' });
-
-    logger.info('Approval cancelled', { approvalId });
-  }
-
-  /**
-   * Clean up expired approvals
-   */
   async cleanupExpired(): Promise<number> {
     const result = await ApprovalModel.updateMany(
-      {
-        status: 'pending',
-        expiresAt: { $lt: new Date() },
-      },
-      {
-        status: 'expired',
-      }
+      { status: 'pending', expiresAt: { $lt: new Date() } },
+      { status: 'expired' }
     );
-
-    if (result.modifiedCount > 0) {
-      logger.info('Expired approvals cleaned up', { count: result.modifiedCount });
-    }
-
     return result.modifiedCount;
-  }
-
-  /**
-   * Check if approval is required for a tool
-   */
-  isApprovalRequired(
-    toolRequiresApproval: boolean,
-    permissionLevel: 'low' | 'medium' | 'high'
-  ): boolean {
-    // Always require approval for high-risk tools
-    if (permissionLevel === 'high') {
-      return true;
-    }
-
-    // Check tool-specific requirement
-    return toolRequiresApproval;
   }
 }
 
-// Export singleton instance
 export const approvalManager = ApprovalManager.getInstance();

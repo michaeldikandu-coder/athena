@@ -1,7 +1,6 @@
 import { Schema } from 'mongoose';
 
 export interface IExecutionEvent {
-  _id: string;
   executionId: string;
   timestamp: Date;
   type: 'agent_reasoning' | 'tool_call' | 'tool_result' | 'approval_request' | 'approval_decision' | 'error' | 'status_change';

@@ -13,13 +13,14 @@ export interface IWorkflowStep {
 }
 
 export interface IWorkflow {
-  _id: string;
   name: string;
   description: string;
   agentId: string;
   trigger: IWorkflowTrigger;
   steps: IWorkflowStep[];
   status: 'active' | 'inactive';
+  application?: string;
+  lastRunAt?: Date;
   userId: string;
   createdAt: Date;
   updatedAt: Date;
@@ -92,6 +93,13 @@ export const WorkflowSchema = new Schema<IWorkflow>(
       enum: ['active', 'inactive'],
       default: 'active',
       index: true,
+    },
+    application: {
+      type: String,
+      index: true,
+    },
+    lastRunAt: {
+      type: Date,
     },
     userId: {
       type: String,

@@ -1,7 +1,6 @@
 import { Schema } from 'mongoose';
 
 export interface ITool {
-  _id: string;
   name: string;
   description: string;
   inputSchema: Record<string, any>; // JSON Schema

@@ -2,6 +2,8 @@
   "name": "@athena/moneyguard",
   "version": "0.1.0",
   "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -10,7 +12,9 @@
   },
   "dependencies": {
     "@athena/core": "*",
+    "@athena/integrations": "*",
     "@athena/shared": "*",
+    "mongoose": "^8.0.3",
     "zod": "^3.22.4"
   },
   "devDependencies": {

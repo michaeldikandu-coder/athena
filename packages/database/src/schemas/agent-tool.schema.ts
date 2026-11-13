@@ -1,7 +1,6 @@
 import { Schema } from 'mongoose';
 
 export interface IAgentTool {
-  _id: string;
   agentId: string;
   toolId: string;
   enabled: boolean;
