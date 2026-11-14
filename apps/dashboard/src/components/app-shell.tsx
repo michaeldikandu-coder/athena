@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from './auth-provider';
 import { LoadingBlock } from './ui';
+import { BackButton } from './back-button';
 import { api } from '@/lib/api';
 import { useRealtime, useRealtimeStatus } from '@/lib/realtime';
 
@@ -264,6 +265,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       <main id="main" className={clsx('wrap pb-24', apiDown || dbIssue ? 'pt-[calc(var(--nav)+88px)]' : 'pt-[calc(var(--nav)+48px)]')}>
+        <div className="-mt-6 mb-4 empty:hidden">
+          <BackButton pathname={pathname} />
+        </div>
         {children}
       </main>
     </div>

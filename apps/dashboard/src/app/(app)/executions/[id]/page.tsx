@@ -86,10 +86,8 @@ export default function ExecutionDetailPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 text-[14px] text-muted">
-        <TextLink href="/executions">Runs</TextLink>
-        <span aria-hidden>/</span>
-        <Mono>{execution.id}</Mono>
+      <div className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-2 text-[14px] text-muted">
+        Run <Mono>{execution.id}</Mono>
       </div>
 
       <div className="mb-8 flex flex-wrap items-start justify-between gap-6">
