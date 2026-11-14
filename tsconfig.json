@@ -1,23 +1,15 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "commonjs",
-    "lib": ["ES2022"],
-    "moduleResolution": "node",
-    "resolveJsonModule": true,
-    "allowJs": true,
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noImplicitReturns": true,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "composite": true,
-    "incremental": true
-  },
-  "exclude": ["node_modules", "dist", "build", ".next"]
+  // Solution file: it checks no files itself, it only lists the projects.
+  // `tsc -b` builds them in dependency order; the editor uses each project's own tsconfig.
+  // The dashboard (apps/dashboard) has its own Next.js tsconfig and is built by Next.
+  "files": [],
+  "references": [
+    { "path": "packages/shared" },
+    { "path": "packages/database" },
+    { "path": "packages/core" },
+    { "path": "packages/integrations" },
+    { "path": "apps/moneyguard" },
+    { "path": "apps/opsguard" },
+    { "path": "apps/api" }
+  ]
 }

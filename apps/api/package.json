@@ -5,9 +5,9 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "tsc -b",
     "start": "node dist/index.js",
-    "type-check": "tsc --noEmit",
+    "type-check": "tsc -b --noEmit",
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {

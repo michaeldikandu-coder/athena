@@ -15,14 +15,14 @@
   ],
   "scripts": {
     "build": "npm run build:backend && npm run build -w @athena/dashboard",
-    "build:backend": "npm run build -w @athena/shared -w @athena/database -w @athena/core -w @athena/integrations -w @athena/moneyguard -w @athena/opsguard -w @athena/api",
+    "build:backend": "tsc -b",
     "dev:api": "npm run build:backend && npm run dev -w @athena/api",
     "dev:dashboard": "npm run dev -w @athena/dashboard",
     "start:api": "npm run start -w @athena/api",
     "start:dashboard": "npm run start -w @athena/dashboard",
     "lint": "npm run lint --workspaces --if-present",
-    "type-check": "npm run build:backend && npm run type-check -w @athena/dashboard",
-    "clean": "rm -rf packages/*/dist apps/*/dist apps/dashboard/.next packages/*/tsconfig.tsbuildinfo apps/*/tsconfig.tsbuildinfo"
+    "type-check": "tsc -b --noEmit && npm run type-check -w @athena/dashboard",
+    "clean": "tsc -b --clean; rm -rf packages/*/dist apps/*/dist apps/dashboard/.next apps/dashboard/.next-dev"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
