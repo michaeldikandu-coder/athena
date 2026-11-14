@@ -36,5 +36,5 @@ export type {
   BachsDispute,
   BachsStatusChange,
 } from './connectors/bachs';
-export { github, resolveRepo, isGithubConfigured } from './connectors/github';
+export { github, resolveRepo, normalizeRepo, isGithubConfigured } from './connectors/github';
 export { postSlackMessage, sendNotificationTool } from './connectors/slack';

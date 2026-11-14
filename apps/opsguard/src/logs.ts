@@ -31,8 +31,18 @@ export async function queryLogFile(query: LogQuery): Promise<{
   const sources = getLogSources();
   const path = sources[query.source];
   if (!path) {
-    const known = Object.keys(sources).join(', ') || 'none configured';
-    throw new AppError(`Unknown log source "${query.source}". Configured: ${known}`, { statusCode: 404 });
+    const known = Object.keys(sources);
+    // Tell the model plainly when guessing another name cannot help, so it moves on instead of retrying.
+    if (known.length === 0) {
+      throw new AppError(
+        'Log search is not set up on this Athena instance (OPSGUARD_LOG_FILES is empty). Do not call query_logs again in this run; continue the investigation without logs and mention this gap in your report.',
+        { statusCode: 404 }
+      );
+    }
+    throw new AppError(
+      `Unknown log source "${query.source}". Use one of these exact names: ${known.join(', ')}`,
+      { statusCode: 404 }
+    );
   }
 
   const info = await stat(path);

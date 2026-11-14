@@ -30,20 +30,43 @@ export function github(): RestClient {
  * (or repos listed in GITHUB_ALLOWED_REPOS) may be used by agents.
  */
 export function resolveRepo(repo?: string): { owner: string; name: string; full: string } {
-  const full = repo || process.env.GITHUB_REPO;
-  if (!full) throw new AppError('GITHUB_REPO is not configured', { statusCode: 503 });
+  const raw = repo || process.env.GITHUB_REPO;
+  if (!raw) throw new AppError('GITHUB_REPO is not configured', { statusCode: 503 });
+  const full = normalizeRepo(raw);
+  if (!full) {
+    throw new AppError(`Invalid repository: ${raw}. Use owner/repo or https://github.com/owner/repo`, {
+      statusCode: 400,
+    });
+  }
 
   const allowed = new Set(
     [process.env.GITHUB_REPO, ...(process.env.GITHUB_ALLOWED_REPOS || '').split(',')]
-      .map((r) => r?.trim().toLowerCase())
+      .map((r) => (r ? normalizeRepo(r)?.toLowerCase() : undefined))
       .filter(Boolean) as string[]
   );
   if (!allowed.has(full.toLowerCase())) {
     throw new AppError(`Repository ${full} is not in the allowed list`, { statusCode: 403 });
   }
   const [owner, name] = full.split('/');
-  if (!owner || !name) throw new AppError(`Invalid repository: ${full}`, { statusCode: 400 });
   return { owner, name, full };
+}
+
+const REPO_PART = /^[A-Za-z0-9_.-]+$/;
+
+/**
+ * Accept "owner/repo", "https://github.com/owner/repo(.git)" or "git@github.com:owner/repo.git"
+ * and return "owner/repo", or null if the value is not a GitHub repository reference.
+ */
+export function normalizeRepo(value: string): string | null {
+  const trimmed = value
+    .trim()
+    .replace(/^(?:https?:\/\/)?(?:www\.)?github\.com[/:]/i, '')
+    .replace(/^git@github\.com:/i, '')
+    .replace(/\/+$/, '')
+    .replace(/\.git$/i, '');
+  const parts = trimmed.split('/');
+  if (parts.length !== 2 || !REPO_PART.test(parts[0]) || !REPO_PART.test(parts[1])) return null;
+  return `${parts[0]}/${parts[1]}`;
 }
 
 export function isGithubConfigured(): boolean {

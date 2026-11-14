@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { AgentModel, WorkflowModel } from '@athena/database';
 import { agentRuntime, describeApplication, getApplication, listApplications } from '@athena/core';
-import { bachsEnvironment, isBachsConfigured, isGithubConfigured, github, resolveRepo } from '@athena/integrations';
+import { bachsEnvironment, isBachsConfigured, isGithubConfigured, github, resolveRepo, normalizeRepo } from '@athena/integrations';
 import { CaseModel, fetchRecentPayments } from '@athena/moneyguard';
 import { checkHealth, getServices } from '@athena/opsguard';
 import { AppError, NotFoundError, logger, successResponse } from '@athena/shared';
@@ -172,7 +172,7 @@ router.get(
     res.json(
       successResponse({
         services: health,
-        github: { configured: isGithubConfigured(), repo: process.env.GITHUB_REPO ?? null, failedRuns, error: githubError },
+        github: { configured: isGithubConfigured(), repo: process.env.GITHUB_REPO ? (normalizeRepo(process.env.GITHUB_REPO) ?? process.env.GITHUB_REPO) : null, failedRuns, error: githubError },
       })
     );
   })

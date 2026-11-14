@@ -98,7 +98,8 @@ const logsInput = z.object({
 export const queryLogsTool: Tool<z.infer<typeof logsInput>> = {
   id: 'query_logs',
   name: 'Query Logs',
-  description: 'Search the most recent lines of a configured log file by text and level.',
+  description:
+    'Search the most recent lines of a configured log file by text and level. Only the names listed in get_system_status.logSources are valid; if that list is empty, logs are not available.',
   inputSchema: logsInput,
   permissionLevel: 'low',
   requiredPermissions: ['read:logs'],

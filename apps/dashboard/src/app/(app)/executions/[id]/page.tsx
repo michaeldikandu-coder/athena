@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, describeError } from '@/lib/api';
 import type { ExecutionDetail, TimelineEvent } from '@/lib/types';
 import { formatDuration, timeAgo } from '@/lib/format';
@@ -31,12 +31,30 @@ export default function ExecutionDetailPage() {
     void load();
   }, [load]);
 
+  // Timeline events stream in over the socket, but counters (turns, tool calls, tokens) live on the
+  // execution record. Refetch it at most once per second while events arrive.
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleRefresh = useCallback(() => {
+    if (refreshTimer.current) return;
+    refreshTimer.current = setTimeout(() => {
+      refreshTimer.current = null;
+      void load();
+    }, 1000);
+  }, [load]);
+  useEffect(
+    () => () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    },
+    []
+  );
+
   useRealtime((message) => {
     if (message.type === 'execution.event' && message.data.executionId === id) {
       const event = message.data as TimelineEvent;
       setExecution((prev) =>
         prev && !prev.timeline.some((e) => e.id === event.id) ? { ...prev, timeline: [...prev.timeline, event] } : prev
       );
+      scheduleRefresh();
     }
     if (
       (message.type === 'execution.status' || message.type === 'approval.requested' || message.type === 'approval.decided') &&
