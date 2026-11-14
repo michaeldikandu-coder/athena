@@ -12,24 +12,25 @@ export const opsGuardApp: AthenaApplication = {
   tools: opsGuardTools,
   agent: opsGuardAgent,
   workflows: opsGuardWorkflows,
+  connections: [
+    { provider: 'services', description: 'The health-check URLs OpsGuard watches' },
+    {
+      provider: 'github',
+      description: 'A token and repository for CI/CD runs and incident issues. Add the webhook to react to failed runs.',
+    },
+    { provider: 'bachs', description: 'Your Bachs key, to investigate abandoned checkouts and orders', optional: true },
+    { provider: 'slack', description: 'Incoming webhook so the agent can notify your team', optional: true },
+  ],
   env: [
     {
-      name: 'OPSGUARD_SERVICES',
-      description: 'JSON list of services to monitor: [{"name":"api","url":"https://.../health"}]',
-    },
-    { name: 'GITHUB_TOKEN', description: 'GitHub token with Issues and Actions access' },
-    { name: 'GITHUB_REPO', description: 'Repository for incidents and CI/CD, e.g. acme/shop' },
-    {
-      name: 'GITHUB_WEBHOOK_SECRET',
-      description: 'Secret for the GitHub webhook endpoint',
+      name: 'OPSGUARD_LOG_FILES',
+      description: 'Server setting: JSON map of log source name to a file on the Athena server',
       optional: true,
     },
-    { name: 'OPSGUARD_LOG_FILES', description: 'JSON map of log source name to file path', optional: true },
-    { name: 'BACHS_API_KEY', description: 'Bachs key, for order and checkout investigation', optional: true },
-    { name: 'SLACK_WEBHOOK_URL', description: 'Slack incoming webhook for notifications', optional: true },
   ],
 };
 
 export { opsGuardTools } from './tools';
-export { getServices } from './config/services';
-export { checkHealth } from './health';
+export { getServices, serviceSchema, servicesListSchema } from './config/services';
+export type { ServiceConfig } from './config/services';
+export { checkHealth, isPrivateAddress, privateUrlsAllowed } from './health';

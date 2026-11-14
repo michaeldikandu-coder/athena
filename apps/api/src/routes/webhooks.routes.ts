@@ -3,9 +3,9 @@ import { WorkflowModel } from '@athena/database';
 import { eventBus, workflowEngine } from '@athena/core';
 import { verifyBachsSignature, verifyGithubSignature, verifyHmacSignature } from '@athena/integrations';
 import { AppError, UnauthorizedError, commonSchemas, logger, successResponse } from '@athena/shared';
-import { config } from '../config';
 import { asyncHandler } from '../middleware/validate';
 import { workflowWebhookSecret } from '../services/webhook-secrets';
+import { findWebhookConnection, markWebhookReceived } from '../services/connections.service';
 
 const router = Router();
 
@@ -30,50 +30,82 @@ function rawBody(req: Request): Buffer {
 }
 
 /**
- * Bachs: system-wide events, delivered to every matching workflow as
- * "bachs.<type>", e.g. "bachs.collection.failed". Bachs expects a 2xx within
- * 10 seconds, so processing happens asynchronously on the event bus.
+ * Each user gets their own Bachs and GitHub webhook URL, shown in
+ * Settings > Connections. The token in the URL picks the connection; the
+ * signature is checked with that user's secret, and only that user's
+ * workflows run. Providers expect a fast 2xx, so runs start asynchronously.
  */
-router.post('/bachs', (req, res) => {
-  if (!config.bachsWebhookSecret) {
-    res.status(503).json({ success: false, error: { message: 'Bachs webhook not configured' } });
-    return;
-  }
-  const valid = verifyBachsSignature(rawBody(req), (name) => req.header(name), config.bachsWebhookSecret);
-  if (!valid) throw new UnauthorizedError('Invalid Bachs signature');
+router.post(
+  '/bachs/:token',
+  asyncHandler(async (req, res) => {
+    const token = req.params.token;
+    const connection = await findWebhookConnection('bachs', token);
+    if (!connection) throw new AppError('Unknown webhook', { statusCode: 404 });
+    if (!connection.secret) {
+      throw new AppError('Add the Bachs webhook signing secret in Settings > Connections first', { statusCode: 409 });
+    }
+    if (!verifyBachsSignature(rawBody(req), (name) => req.header(name), connection.secret)) {
+      throw new UnauthorizedError('Invalid Bachs signature');
+    }
 
-  const event = req.body as { id?: string; type?: string; organization_id?: string; data?: unknown };
-  if (!event?.id || !event?.type || !event.data || typeof event.data !== 'object') {
-    throw new AppError('Invalid Bachs event envelope', { statusCode: 400 });
-  }
+    const event = req.body as { id?: string; type?: string; data?: unknown };
+    if (!event?.id || !event?.type || !event.data || typeof event.data !== 'object') {
+      throw new AppError('Invalid Bachs event envelope', { statusCode: 400 });
+    }
 
-  res.json({ received: true });
-  if (alreadyProcessed(`bachs:${event.id}`)) return;
+    res.json({ received: true });
+    void markWebhookReceived('bachs', token).catch(() => undefined);
+    if (alreadyProcessed(`bachs:${token}:${event.id}`)) return;
 
-  logger.info('Bachs webhook received', { type: event.type, id: event.id });
-  eventBus.emit('trigger', { event: `bachs.${event.type}`, source: 'bachs', payload: req.body });
-});
+    logger.info('Bachs webhook received', { type: event.type, id: event.id, userId: connection.userId });
+    eventBus.emit('trigger', {
+      event: `bachs.${event.type}`,
+      source: 'bachs',
+      payload: req.body,
+      userId: connection.userId,
+    });
+  })
+);
+
+router.post(
+  '/github/:token',
+  asyncHandler(async (req, res) => {
+    const token = req.params.token;
+    const connection = await findWebhookConnection('github', token);
+    if (!connection?.secret) throw new AppError('Unknown webhook', { statusCode: 404 });
+    if (!verifyGithubSignature(rawBody(req), req.header('x-hub-signature-256'), connection.secret)) {
+      throw new UnauthorizedError('Invalid GitHub signature');
+    }
+    const eventName = req.header('x-github-event');
+    const delivery = req.header('x-github-delivery');
+    if (!eventName) throw new AppError('Missing X-GitHub-Event header', { statusCode: 400 });
+
+    res.json({ received: true });
+    void markWebhookReceived('github', token).catch(() => undefined);
+    if (eventName === 'ping' || (delivery && alreadyProcessed(`github:${token}:${delivery}`))) return;
+
+    logger.info('GitHub webhook received', { event: eventName, delivery, userId: connection.userId });
+    eventBus.emit('trigger', {
+      event: `github.${eventName}`,
+      source: 'github',
+      payload: req.body,
+      userId: connection.userId,
+    });
+  })
+);
 
 /**
- * GitHub: system-wide events, e.g. "github.workflow_run"
+ * The old shared endpoints delivered one server's events to every account.
+ * Point providers at the per-user URL from Settings > Connections instead.
  */
-router.post('/github', (req, res) => {
-  if (!config.githubWebhookSecret) {
-    res.status(503).json({ success: false, error: { message: 'GitHub webhook not configured' } });
-    return;
-  }
-  if (!verifyGithubSignature(rawBody(req), req.header('x-hub-signature-256'), config.githubWebhookSecret)) {
-    throw new UnauthorizedError('Invalid GitHub signature');
-  }
-  const eventName = req.header('x-github-event');
-  const delivery = req.header('x-github-delivery');
-  if (!eventName) throw new AppError('Missing X-GitHub-Event header', { statusCode: 400 });
-
-  res.json({ received: true });
-  if (eventName === 'ping' || (delivery && alreadyProcessed(`github:${delivery}`))) return;
-
-  logger.info('GitHub webhook received', { event: eventName, delivery });
-  eventBus.emit('trigger', { event: `github.${eventName}`, source: 'github', payload: req.body });
+router.post(['/bachs', '/github'], (_req, res) => {
+  res.status(410).json({
+    success: false,
+    error: {
+      message:
+        'This shared webhook URL was removed. Copy your personal webhook URL from Settings > Connections in the Athena dashboard.',
+    },
+  });
 });
 
 /**

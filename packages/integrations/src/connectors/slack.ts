@@ -1,22 +1,45 @@
 import axios from 'axios';
 import { z } from 'zod';
-import { AppError, IntegrationError } from '@athena/shared';
+import { AppError, IntegrationError, requireConnection } from '@athena/shared';
 import { Tool } from '@athena/core';
 
 /**
- * Post a message to Slack through an incoming webhook (SLACK_WEBHOOK_URL).
+ * Only Slack's own webhook hosts are accepted, so a stored URL cannot point
+ * the server at internal addresses.
  */
-export async function postSlackMessage(text: string, blocks?: unknown[]): Promise<void> {
-  const url = process.env.SLACK_WEBHOOK_URL;
-  if (!url) throw new AppError('SLACK_WEBHOOK_URL is not configured', { statusCode: 503 });
+export function isSlackWebhookUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' &&
+      url.hostname === 'hooks.slack.com' &&
+      /^\/(services|workflows|triggers)\/[A-Za-z0-9/_-]+$/.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
 
+/** Post to a specific incoming webhook URL */
+export async function postSlackMessageTo(url: string, text: string, blocks?: unknown[]): Promise<void> {
+  if (!isSlackWebhookUrl(url)) {
+    throw new AppError('Slack webhook URL must start with https://hooks.slack.com/', { statusCode: 400 });
+  }
   const response = await axios.post(url, { text, ...(blocks ? { blocks } : {}) }, {
     timeout: 10000,
+    maxRedirects: 0,
     validateStatus: () => true,
   });
   if (response.status < 200 || response.status >= 300) {
     throw new IntegrationError('slack', `Webhook returned ${response.status}: ${String(response.data).slice(0, 200)}`);
   }
+}
+
+/**
+ * Post a message through the current user's Slack connection.
+ */
+export async function postSlackMessage(text: string, blocks?: unknown[]): Promise<void> {
+  await postSlackMessageTo(requireConnection('slack').secrets.webhookUrl, text, blocks);
 }
 
 const sendNotificationInput = z.object({

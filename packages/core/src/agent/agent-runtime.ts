@@ -18,6 +18,7 @@ import { memoryManager } from '../memory/memory-manager';
 import { builtInTools } from '../memory/memory-tools';
 import { getLLMClient, defaultModel } from '../llm/llm-factory';
 import { LLMMessage, LLMToolCall } from '../llm/llm.types';
+import { withUserScope } from '../connections';
 
 export interface LoadedAgent {
   id: string;
@@ -435,7 +436,8 @@ export class AgentRuntime {
     };
 
     try {
-      const result = await toolRegistry.execute(tool.id, input, toolContext);
+      // Tools reach third-party services with the run owner's own connections
+      const result = await withUserScope(ctx.userId, () => toolRegistry.execute(tool.id, input, toolContext));
       await ExecutionModel.updateOne({ _id: ctx.executionId }, { $inc: { toolCallCount: 1 } });
       await record('tool_result', {
         output: result.success ? { data: result.data } : { error: result.error },

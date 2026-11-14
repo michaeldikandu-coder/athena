@@ -2,8 +2,8 @@
 
 ## Before the demo
 
-- API and dashboard running with an LLM key, a Bachs sandbox key (`sk_sandbox_...`), a GitHub token + repo, a Slack webhook, and `OPSGUARD_SERVICES` including one service that is down (for example a stopped staging URL).
-- Create sandbox payments in Bachs so MoneyGuard has data: a few hosted checkouts paid by the same customer email, including at least one failed attempt (the sandbox lets you force outcomes). Run `bachs listen --forward-to localhost:3001/api/webhooks/bachs` during the demo.
+- API and dashboard running with an LLM key, and, in Build > Connections, a Bachs sandbox key (`sk_sandbox_...`), a GitHub token + repo, a Slack webhook, and monitored services including one that is down (for example a stopped staging URL).
+- Create sandbox payments in Bachs so MoneyGuard has data: a few hosted checkouts paid by the same customer email, including at least one failed attempt (the sandbox lets you force outcomes). Run the `bachs listen` command shown on the Connections page during the demo.
 - At least one failed GitHub Actions run in the repo.
 - Both applications installed. Keep the Approvals page open in a second tab.
 

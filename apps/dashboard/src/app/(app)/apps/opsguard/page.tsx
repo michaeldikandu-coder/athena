@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, describeError } from '@/lib/api';
 import { timeAgo } from '@/lib/format';
 import { AppPage } from '@/components/app-header';
-import { Badge, Button, EmptyState, ErrorBanner, LoadingBlock, Mono } from '@/components/ui';
+import { Badge, Button, ButtonLink, EmptyState, ErrorBanner, LoadingBlock, Mono } from '@/components/ui';
 
 interface HealthResult {
   name: string;
@@ -126,9 +126,8 @@ function OpsGuardContent() {
         {!overview ? (
           <LoadingBlock label="Checking services" />
         ) : overview.services.length === 0 ? (
-          <EmptyState title="Add the services OpsGuard should watch">
-            Set <span className="mono">OPSGUARD_SERVICES</span> on the API server, for example{' '}
-            <span className="mono">[{'{'}&quot;name&quot;:&quot;api&quot;,&quot;url&quot;:&quot;https://api.example.com/health&quot;{'}'}]</span>. OpsGuard can only reach URLs listed there.
+          <EmptyState title="Add the services OpsGuard should watch" action={<ButtonLink href="/settings/connections#services">Add services</ButtonLink>}>
+            Give each service a name and a health-check URL. OpsGuard only checks the URLs you list.
           </EmptyState>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -179,8 +178,8 @@ function OpsGuardContent() {
           <div className="px-5"><LoadingBlock /></div>
         ) : !overview.github.configured ? (
           <div className="p-5">
-            <EmptyState title="Connect GitHub to watch deploys">
-              Add <span className="mono">GITHUB_TOKEN</span> and <span className="mono">GITHUB_REPO</span> to the API server. OpsGuard reads Actions runs and opens incident issues there.
+            <EmptyState title="Connect GitHub to watch deploys" action={<ButtonLink href="/settings/connections#github">Connect GitHub</ButtonLink>}>
+              Add a token and a repository. OpsGuard reads Actions runs and opens incident issues there.
             </EmptyState>
           </div>
         ) : overview.github.error ? (

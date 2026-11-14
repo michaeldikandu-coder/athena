@@ -22,6 +22,7 @@ const BUILD = [
   { href: '/workflows', label: 'Workflows', text: 'Webhook, event, and schedule triggers with their steps.', icon: 'flow' },
   { href: '/tools', label: 'Tool registry', text: 'Every tool, its risk level, and the permissions it needs.', icon: 'tool' },
   { href: '/apps', label: 'Applications', text: 'Install MoneyGuard and OpsGuard on the shared runtime.', icon: 'apps' },
+  { href: '/settings/connections', label: 'Connections', text: 'Your Bachs, GitHub and Slack accounts, and the services to watch.', icon: 'plug' },
 ] as const;
 
 function isActive(pathname: string, href: string): boolean {
@@ -37,6 +38,7 @@ function Glyph({ name }: { name: (typeof BUILD)[number]['icon'] }) {
       {name === 'agent' && (<><rect x="4" y="7" width="16" height="12" rx="2" /><path d="M12 3v4M9 12h.01M15 12h.01M9 16h6" /></>)}
       {name === 'flow' && (<><circle cx="5" cy="6" r="2" /><circle cx="19" cy="6" r="2" /><circle cx="12" cy="18" r="2" /><path d="M7 6h10M6 8l5 8M18 8l-5 8" /></>)}
       {name === 'tool' && (<path d="M14.5 6.5a4 4 0 0 0-5.3 5.3L4 17v3h3l5.2-5.2a4 4 0 0 0 5.3-5.3l-2.5 2.5-2.5-.5-.5-2.5z" />)}
+      {name === 'plug' && (<><path d="M9 3v4M15 3v4" /><path d="M6 7h12v3a6 6 0 0 1-12 0z" /><path d="M12 16v5" /></>)}
       {name === 'apps' && (<><rect x="4" y="4" width="7" height="7" rx="1.5" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" /></>)}
     </svg>
   );
@@ -203,7 +205,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {buildOpen && (
           <div id="build-panel" className="nav-panel hidden border-t border-line bg-bg lg:block">
-            <div className="wrap grid grid-cols-4 gap-4 py-5">
+            <div className="wrap grid grid-cols-5 gap-4 py-5">
               {BUILD.map((item) => (
                 <Link key={item.href} href={item.href} className="card-link group flex gap-3 p-4">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-line bg-surface text-ink">

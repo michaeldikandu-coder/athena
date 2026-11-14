@@ -15,3 +15,6 @@ export * from './types';
 
 // Utilities
 export * from './utils';
+// Credentials
+export * from './secret-box';
+export * from './user-scope';

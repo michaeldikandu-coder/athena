@@ -1,5 +1,6 @@
 'use client';
 
+import clsx from 'clsx';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { api, describeError } from '@/lib/api';
@@ -11,6 +12,45 @@ export interface AppDetail extends Application {
 }
 
 const TRIGGER: Record<string, string> = { webhook: 'Webhook', schedule: 'Schedule', event: 'Event', manual: 'Manual' };
+
+/**
+ * Shown until every connection the app depends on is in place.
+ */
+function SetupChecklist({ app }: { app: AppDetail }) {
+  const missing = app.connections.filter((c) => !c.connected);
+  if (missing.every((c) => c.optional)) return null;
+  return (
+    <section className="card mb-8 p-5" aria-labelledby="setup-title">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 id="setup-title" className="text-[17px] font-medium tracking-[-0.01em]">Finish setting up {app.name}</h2>
+          <p className="mt-1 text-[15px] text-ink-soft">Connect your own accounts. Keys are encrypted and only used for your runs.</p>
+        </div>
+        <ButtonLink href={`/settings/connections#${missing.find((c) => !c.optional)?.provider ?? ''}`}>Open connections</ButtonLink>
+      </div>
+      <ol className="mt-4 grid gap-2 sm:grid-cols-2">
+        {app.connections.map((c) => (
+          <li key={c.provider} className="flex items-start gap-2.5 rounded-md border border-line px-3 py-2.5 text-[14px]">
+            <span
+              className={clsx(
+                'mt-[5px] h-2 w-2 shrink-0 rounded-full border',
+                c.connected ? 'border-ok bg-ok' : c.optional ? 'border-line-strong' : 'border-warn bg-warn'
+              )}
+              aria-hidden
+            />
+            <span className="text-ink-soft">
+              <Link href={`/settings/connections#${c.provider}`} className="font-medium text-ink hover:underline">
+                {c.label}
+              </Link>
+              {c.connected ? ' · connected' : c.optional ? ' · optional' : ' · required'}
+              <span className="block text-muted">{c.description}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
 
 /**
  * Loads an application and renders its header. Children render only once installed.
@@ -59,6 +99,7 @@ export function AppPage({ appId, children }: { appId: string; children: (app: Ap
           </div>
         }
       />
+      <SetupChecklist app={app} />
       <div className="mb-8 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {app.installedWorkflows.map((w) => (
           <Link key={w.id} href={`/workflows/${w.id}`} className="card-link flex flex-col gap-2 px-4 py-3">

@@ -12,18 +12,15 @@ export const moneyGuardApp: AthenaApplication = {
   tools: moneyGuardTools,
   agent: moneyGuardAgent,
   workflows: moneyGuardWorkflows,
-  env: [
+  connections: [
     {
-      name: 'BACHS_API_KEY',
+      provider: 'bachs',
       description:
-        'Bachs secret key (sk_sandbox_... for the sandbox). Needs payments, customers, refunds, and disputes access.',
+        'Your Bachs secret key (sk_sandbox_... for the sandbox) to read payments, customers and disputes, flag customers and refund. Add the webhook signing secret to start runs automatically.',
     },
-    {
-      name: 'BACHS_WEBHOOK_SECRET',
-      description: 'Signing secret of the Bachs webhook endpoint pointing at /api/webhooks/bachs',
-      optional: true,
-    },
-    { name: 'SLACK_WEBHOOK_URL', description: 'Slack incoming webhook for notifications', optional: true },
+    { provider: 'slack', description: 'Incoming webhook so the agent can notify your team', optional: true },
+  ],
+  env: [
     {
       name: 'MONEYGUARD_LARGE_AMOUNTS',
       description: 'JSON map of large-payment thresholds per currency, e.g. {"NGN":"1500000","USD":"1000"}',

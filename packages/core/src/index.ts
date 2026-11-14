@@ -30,3 +30,5 @@ export * from './workflows';
 
 // Application plugin contract
 export * from './application';
+// Per-user connections
+export { loadUserScope, withUserScope } from './connections';

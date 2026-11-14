@@ -2,12 +2,13 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { AgentModel, WorkflowModel } from '@athena/database';
 import { agentRuntime, describeApplication, getApplication, listApplications } from '@athena/core';
-import { bachsEnvironment, isBachsConfigured, isGithubConfigured, github, resolveRepo, normalizeRepo } from '@athena/integrations';
+import { bachsEnvironment, connectedRepo, isBachsConfigured, isGithubConfigured, github, resolveRepo } from '@athena/integrations';
 import { CaseModel, fetchRecentPayments } from '@athena/moneyguard';
 import { checkHealth, getServices } from '@athena/opsguard';
 import { AppError, NotFoundError, logger, successResponse } from '@athena/shared';
 import { asyncHandler, validate } from '../middleware/validate';
 import { findInstalledAgent, installApplication } from '../services/app-installer';
+import { connectedProviders } from '../services/connections.service';
 
 const router = Router();
 
@@ -30,12 +31,13 @@ router.get(
       .select('application status')
       .lean();
     const byApp = new Map(installed.map((a) => [a.application, a]));
+    const connected = await connectedProviders(req.user!.id);
     res.json(
       successResponse(
         listApplications().map((app) => {
           const agent = byApp.get(app.id);
           return {
-            ...describeApplication(app),
+            ...describeApplication(app, connected),
             installed: Boolean(agent),
             agentId: agent ? String(agent._id) : null,
           };
@@ -60,12 +62,13 @@ router.get(
   asyncHandler(async (req, res) => {
     const app = getApplication(req.params.appId);
     const agent = await findInstalledAgent(app.id, req.user!.id);
+    const connected = await connectedProviders(req.user!.id);
     const workflows = agent
       ? await WorkflowModel.find({ agentId: String(agent._id), userId: req.user!.id }).lean()
       : [];
     res.json(
       successResponse({
-        ...describeApplication(app),
+        ...describeApplication(app, connected),
         installed: Boolean(agent),
         agentId: agent ? String(agent._id) : null,
         installedWorkflows: workflows.map((w) => ({
@@ -172,7 +175,7 @@ router.get(
     res.json(
       successResponse({
         services: health,
-        github: { configured: isGithubConfigured(), repo: process.env.GITHUB_REPO ? (normalizeRepo(process.env.GITHUB_REPO) ?? process.env.GITHUB_REPO) : null, failedRuns, error: githubError },
+        github: { configured: isGithubConfigured(), repo: connectedRepo(), failedRuns, error: githubError },
       })
     );
   })

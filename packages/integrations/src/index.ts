@@ -23,7 +23,11 @@ export type { FieldMapping, NormalizeOptions } from './legacy/normalize';
 export {
   bachs,
   bachsEnvironment,
+  bachsEnvironmentForKey,
+  createBachsClient,
   isBachsConfigured,
+  isBachsKey,
+  verifyBachsKey,
   formatMoney,
   maskTail,
 } from './connectors/bachs';
@@ -36,5 +40,13 @@ export type {
   BachsDispute,
   BachsStatusChange,
 } from './connectors/bachs';
-export { github, resolveRepo, normalizeRepo, isGithubConfigured } from './connectors/github';
-export { postSlackMessage, sendNotificationTool } from './connectors/slack';
+export {
+  github,
+  createGithubClient,
+  connectedRepo,
+  resolveRepo,
+  normalizeRepo,
+  isGithubConfigured,
+  verifyGithubAccess,
+} from './connectors/github';
+export { postSlackMessage, postSlackMessageTo, isSlackWebhookUrl, sendNotificationTool } from './connectors/slack';

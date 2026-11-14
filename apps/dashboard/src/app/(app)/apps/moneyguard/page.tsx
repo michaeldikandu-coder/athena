@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, describeError } from '@/lib/api';
 import { timeAgo } from '@/lib/format';
 import { AppPage } from '@/components/app-header';
-import { Badge, Button, EmptyState, ErrorBanner, LoadingBlock, Mono, TextLink } from '@/components/ui';
+import { Badge, Button, ButtonLink, EmptyState, ErrorBanner, LoadingBlock, Mono, TextLink } from '@/components/ui';
 
 interface PaymentRow {
   chargeId: string | null;
@@ -145,8 +145,8 @@ function MoneyGuardContent() {
           <div className="px-5"><LoadingBlock label="Loading payments" /></div>
         ) : !configured ? (
           <div className="p-5">
-            <EmptyState title="Connect Bachs to see payments">
-              Add <span className="mono">BACHS_API_KEY</span> to the API server’s <span className="mono">.env</span>. An <span className="mono">sk_sandbox_</span> key reads the Bachs sandbox, so nothing real moves while you test.
+            <EmptyState title="Connect Bachs to see payments" action={<ButtonLink href="/settings/connections#bachs">Connect Bachs</ButtonLink>}>
+              Paste your Bachs secret key. An <span className="mono">sk_sandbox_</span> key reads the Bachs sandbox, so nothing real moves while you test.
             </EmptyState>
           </div>
         ) : payments.length === 0 ? (

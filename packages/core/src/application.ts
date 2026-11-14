@@ -1,4 +1,4 @@
-import { ConflictError, NotFoundError, logger } from '@athena/shared';
+import { CONNECTION_LABELS, ConflictError, ConnectionProvider, NotFoundError, logger } from '@athena/shared';
 import { Tool } from './types/tool.types';
 import { toolRegistry } from './tools/tool-registry';
 import { builtInTools } from './memory/memory-tools';
@@ -29,8 +29,16 @@ export interface WorkflowTemplate {
   }>;
 }
 
+/** Server-level setting the operator configures in the environment */
 export interface EnvRequirement {
   name: string;
+  description: string;
+  optional?: boolean;
+}
+
+/** Service each user connects from the dashboard (Settings > Connections) */
+export interface ConnectionRequirement {
+  provider: ConnectionProvider;
   description: string;
   optional?: boolean;
 }
@@ -48,6 +56,9 @@ export interface AthenaApplication {
   tools: Tool[];
   agent: AgentTemplate;
   workflows: WorkflowTemplate[];
+  /** Per-user services the application uses */
+  connections: ConnectionRequirement[];
+  /** Optional server-level settings (operator only) */
   env: EnvRequirement[];
 }
 
@@ -58,6 +69,7 @@ export interface ApplicationStatus {
   description: string;
   tools: string[];
   workflows: Array<Pick<WorkflowTemplate, 'key' | 'name' | 'description' | 'trigger'>>;
+  connections: Array<ConnectionRequirement & { label: string; connected: boolean }>;
   env: Array<EnvRequirement & { configured: boolean }>;
   ready: boolean;
 }
@@ -114,8 +126,20 @@ export function listApplications(): AthenaApplication[] {
   return Array.from(applications.values());
 }
 
-export function describeApplication(app: AthenaApplication): ApplicationStatus {
+/**
+ * Describe an application for one user. `connected` lists the providers that
+ * user has connected; readiness depends on them, not on server env.
+ */
+export function describeApplication(
+  app: AthenaApplication,
+  connected: ReadonlySet<ConnectionProvider> = new Set()
+): ApplicationStatus {
   const env = app.env.map((e) => ({ ...e, configured: Boolean(process.env[e.name]) }));
+  const connections = app.connections.map((c) => ({
+    ...c,
+    label: CONNECTION_LABELS[c.provider],
+    connected: connected.has(c.provider),
+  }));
   return {
     id: app.id,
     name: app.name,
@@ -128,7 +152,8 @@ export function describeApplication(app: AthenaApplication): ApplicationStatus {
       description,
       trigger,
     })),
+    connections,
     env,
-    ready: env.every((e) => e.optional || e.configured),
+    ready: connections.every((c) => c.optional || c.connected) && env.every((e) => e.optional || e.configured),
   };
 }

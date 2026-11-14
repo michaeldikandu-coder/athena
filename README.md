@@ -66,26 +66,24 @@ npm run dev:dashboard       # dashboard on :3000 (second terminal)
 
 Open http://localhost:3000, create an account (the first account is admin), go to **Applications**, and install MoneyGuard and/or OpsGuard.
 
-### Integration setup
+### Connecting accounts
 
-All integrations use real APIs. Each tool reports a clear error when its service is not configured.
+All integrations use real APIs, and every user connects their own accounts in the dashboard under **Build > Connections**. Nothing per-user goes in `.env`. Keys are verified with the provider before saving, encrypted with AES-256-GCM (`ENCRYPTION_KEY`), shown only as masked hints, and loaded only for that user's requests and runs.
 
-| Feature | Settings |
-|---|---|
-| MoneyGuard payments, customers, disputes, flags, refunds | `BACHS_API_KEY` (an `sk_sandbox_` key uses the Bachs sandbox) |
-| MoneyGuard webhook workflows | Bachs webhook endpoint `<API_URL>/api/webhooks/bachs` subscribed to `collection.failed`, `collection.succeeded`, `collection.underpaid`, `dispute.created` (and `checkout.expired` for OpsGuard); set `BACHS_WEBHOOK_SECRET` |
-| OpsGuard health checks | `OPSGUARD_SERVICES` JSON list. The agent can only reach these URLs. |
-| OpsGuard logs | `OPSGUARD_LOG_FILES` JSON map of name to path. Only these files are readable. |
-| OpsGuard CI/CD and incidents | `GITHUB_TOKEN`, `GITHUB_REPO` |
-| OpsGuard failed-deployment workflow | GitHub repo webhook (event `workflow_run`) to `<API_URL>/api/webhooks/github`; set `GITHUB_WEBHOOK_SECRET` |
-| OpsGuard abandoned-order workflow | Bachs webhook event `checkout.expired` |
-| Notifications (both apps) | `SLACK_WEBHOOK_URL` |
+| Connection | Used by | What to enter |
+|---|---|---|
+| Bachs | MoneyGuard (required), OpsGuard order lookups | Secret key (`sk_sandbox_` uses the sandbox). For automatic runs, point a Bachs webhook at your personal URL from the Connections page (events `collection.failed`, `collection.succeeded`, `collection.underpaid`, `dispute.created`, `checkout.expired`) and paste its signing secret. |
+| Monitored services | OpsGuard (required) | Name and health-check URL per service. The agent can only check these URLs. In production, private and localhost addresses are refused (`OPSGUARD_ALLOW_PRIVATE_URLS` overrides). |
+| GitHub | OpsGuard (required) | A fine-grained token and one repository. Add the repository webhook (event `workflow_run`) with the URL and secret shown on the page. |
+| Slack | Both (optional) | An incoming webhook URL on `hooks.slack.com`. |
 
-With the [Bachs CLI](https://docs.bachs.io/developer-portal/local-testing) you can forward sandbox events locally:
+Server-only settings stay in `.env`: `OPSGUARD_LOG_FILES` (log files on the server the agent may read), `MONEYGUARD_LARGE_AMOUNTS`, and `BACHS_BASE_URL`.
+
+With the [Bachs CLI](https://docs.bachs.io/developer-portal/local-testing) you can forward sandbox events to your personal URL locally. The Connections page shows the exact command:
 
 ```bash
-bachs listen --forward-to localhost:3001/api/webhooks/bachs   # prints the signing secret for BACHS_WEBHOOK_SECRET
-bachs trigger collection.failed
+bachs listen --forward-to localhost:3001/api/webhooks/bachs/<your-token> --events collection.failed,dispute.created
+# paste the signing secret it prints into Connections > Bachs > Webhook signing secret
 ```
 
 Bachs money is a decimal string with a currency (`"75000.00"` NGN), never minor units. Payments carry the customer's name and email but no customer id, so MoneyGuard finds the customer and their history by email. Large-payment thresholds are per currency (`MONEYGUARD_LARGE_AMOUNTS`).

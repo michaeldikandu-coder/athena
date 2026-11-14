@@ -32,12 +32,14 @@ The dashboard proxies `/api/*` to the API, so the session cookie is first-party 
 
 On Vercel, set the project root to `apps/dashboard`, and set the install command to run from the repo root (`cd ../.. && npm ci`).
 
-## 4. Webhooks
+## 4. Connections and webhooks
 
-After the API is live:
+Users connect Bachs, GitHub, Slack and their monitored services themselves under **Build > Connections**. The server needs:
 
-- Bachs: in the Bachs dashboard (or `POST /v1/webhooks/endpoints`) add an endpoint `https://<api>/api/webhooks/bachs` with event types `collection.failed`, `collection.succeeded`, `collection.underpaid`, `dispute.created`, `checkout.expired`. Put its signing secret in `BACHS_WEBHOOK_SECRET`. Bachs requires a 2xx within 10 seconds; the API acknowledges immediately and processes asynchronously.
-- GitHub: add a repository webhook `https://<api>/api/webhooks/github`, content type JSON, event "Workflow runs". Put its secret in `GITHUB_WEBHOOK_SECRET`.
+- `ENCRYPTION_KEY`: 32+ random characters (`openssl rand -hex 32`). The API refuses to start in production without it. Changing it later makes stored credentials unreadable, and users have to reconnect.
+- `API_URL`: the public API URL, used to build each user's webhook URLs.
+
+Each user gets a personal webhook URL per provider: `https://<api>/api/webhooks/bachs/<token>` and `https://<api>/api/webhooks/github/<token>`. Events run only that user's workflows and are checked with that user's secret. Bachs requires a 2xx within 10 seconds; the API acknowledges immediately and processes asynchronously. The old shared URLs (`/api/webhooks/bachs`, `/api/webhooks/github`) return 410.
 
 ## Pre-deploy checklist
 

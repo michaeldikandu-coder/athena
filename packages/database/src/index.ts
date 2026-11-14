@@ -20,6 +20,7 @@ export { ExecutionModel } from './models/execution.model';
 export { ExecutionEventModel } from './models/execution-event.model';
 export { MemoryModel } from './models/memory.model';
 export { ApprovalModel } from './models/approval.model';
+export { ConnectionModel } from './models/connection.model';
 
 // Schema Interfaces
 export type { IUser } from './schemas/user.schema';
@@ -31,3 +32,4 @@ export type { IExecution, IExecutionTrigger } from './schemas/execution.schema';
 export type { IExecutionEvent } from './schemas/execution-event.schema';
 export type { IMemory } from './schemas/memory.schema';
 export type { IApproval, IApprovalRequestedAction } from './schemas/approval.schema';
+export type { IConnection } from './schemas/connection.schema';

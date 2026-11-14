@@ -1,6 +1,7 @@
 'use client';
 
 import clsx from 'clsx';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { api, describeError } from '@/lib/api';
@@ -112,6 +113,34 @@ export default function AppsPage() {
               </div>
 
               <div>
+                <div className="label">Connections</div>
+                <ul className="space-y-2">
+                  {app.connections.map((c) => (
+                    <li key={c.provider} className="flex items-start gap-2.5 text-[14px]">
+                      <span
+                        className={clsx(
+                          'mt-[5px] h-2 w-2 shrink-0 rounded-full border',
+                          c.connected ? 'border-ok bg-ok' : c.optional ? 'border-line-strong bg-transparent' : 'border-warn bg-warn'
+                        )}
+                        aria-label={c.connected ? 'Connected' : c.optional ? 'Optional, not connected' : 'Required, not connected'}
+                      />
+                      <span className="text-ink-soft">
+                        <span className="font-medium text-ink">{c.label}</span>
+                        {c.optional && <span className="text-muted"> optional</span>} · {c.description}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {!app.ready && (
+                  <p className="mt-3 rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-[14px] text-warn">
+                    A required connection is missing. You can install now; the tools that need it report what to connect until you do.{' '}
+                    <Link href="/settings/connections" className="link font-medium">Open connections</Link>
+                  </p>
+                )}
+              </div>
+
+              {app.env.length > 0 && (
+              <div>
                 <div className="label">Server settings</div>
                 <ul className="space-y-2">
                   {app.env.map((e) => (
@@ -130,12 +159,9 @@ export default function AppsPage() {
                     </li>
                   ))}
                 </ul>
-                {!app.ready && (
-                  <p className="mt-3 rounded-md border border-warn-line bg-warn-soft px-3 py-2 text-[14px] text-warn">
-                    A required setting is missing on the API server. The agent installs, and the tools that need it report a clear error until it is set.
-                  </p>
-                )}
+                <p className="mt-2 text-[13px] text-muted">Optional. Set by whoever runs this Athena server.</p>
               </div>
+              )}
             </div>
           </article>
         ))}

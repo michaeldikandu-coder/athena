@@ -1,8 +1,10 @@
-import { AppError } from '@athena/shared';
+import { AppError, findConnection, requireConnection } from '@athena/shared';
 import { RestClient } from '../rest/rest-client';
 
 /**
- * Bachs REST API client (https://docs.bachs.io). Uses BACHS_API_KEY.
+ * Bachs REST API client (https://docs.bachs.io). Each user connects their own
+ * secret key in Settings > Connections; bachs() uses the key of the user whose
+ * request or run is in progress.
  * sk_sandbox_ keys go to the sandbox, sk_live_ keys to production, matching
  * the official SDK. BACHS_BASE_URL overrides the endpoint.
  */
@@ -10,39 +12,51 @@ import { RestClient } from '../rest/rest-client';
 const SANDBOX_URL = 'https://sandbox-api.bachs.io';
 const PRODUCTION_URL = 'https://api.bachs.io';
 
-let client: RestClient | undefined;
+export function isBachsKey(key: string): boolean {
+  return /^sk_(sandbox|live)_[A-Za-z0-9_-]{8,200}$/.test(key);
+}
 
-export function bachsEnvironment(): 'sandbox' | 'production' | null {
-  const key = process.env.BACHS_API_KEY;
-  if (!key) return null;
+export function bachsEnvironmentForKey(key: string): 'sandbox' | 'production' {
   return key.startsWith('sk_sandbox_') ? 'sandbox' : 'production';
 }
 
-export function bachs(): RestClient {
-  if (client) return client;
-  const key = process.env.BACHS_API_KEY;
-  if (!key) {
-    throw new AppError('BACHS_API_KEY is not configured', { statusCode: 503 });
-  }
-  if (!key.startsWith('sk_sandbox_') && !key.startsWith('sk_live_')) {
-    throw new AppError('BACHS_API_KEY must start with sk_sandbox_ or sk_live_', { statusCode: 503 });
-  }
-  const baseURL =
-    process.env.BACHS_BASE_URL || (key.startsWith('sk_sandbox_') ? SANDBOX_URL : PRODUCTION_URL);
+/** Environment of the current user's Bachs connection */
+export function bachsEnvironment(): 'sandbox' | 'production' | null {
+  const key = findConnection('bachs')?.secrets.apiKey;
+  return key ? bachsEnvironmentForKey(key) : null;
+}
 
-  client = new RestClient({
+/**
+ * Client for a specific key. BACHS_BASE_URL (server setting) overrides the
+ * endpoint for every user, e.g. for a self-hosted mock during development.
+ */
+export function createBachsClient(key: string): RestClient {
+  if (!isBachsKey(key)) {
+    throw new AppError('Bachs API key must start with sk_sandbox_ or sk_live_', { statusCode: 400 });
+  }
+  return new RestClient({
     service: 'bachs',
-    baseURL,
+    baseURL: process.env.BACHS_BASE_URL || (key.startsWith('sk_sandbox_') ? SANDBOX_URL : PRODUCTION_URL),
     bearerToken: key,
     headers: { 'Content-Type': 'application/json' },
     timeoutMs: 20000,
     maxRetries: 2,
   });
-  return client;
+}
+
+/** Client for the current user's Bachs connection */
+export function bachs(): RestClient {
+  return createBachsClient(requireConnection('bachs').secrets.apiKey);
 }
 
 export function isBachsConfigured(): boolean {
-  return Boolean(process.env.BACHS_API_KEY);
+  return Boolean(findConnection('bachs')?.secrets.apiKey);
+}
+
+/** Make one cheap authenticated call to confirm the key works */
+export async function verifyBachsKey(key: string): Promise<{ environment: 'sandbox' | 'production' }> {
+  await createBachsClient(key).get('/v1/payments', { limit: 1 });
+  return { environment: bachsEnvironmentForKey(key) };
 }
 
 /** Bachs money is a decimal string paired with an ISO 4217 code, e.g. "75000.00 NGN" */

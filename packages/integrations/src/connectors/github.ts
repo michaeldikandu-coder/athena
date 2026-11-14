@@ -1,17 +1,12 @@
-import { AppError } from '@athena/shared';
+import { AppError, findConnection, requireConnection } from '@athena/shared';
 import { RestClient } from '../rest/rest-client';
 
-let client: RestClient | undefined;
-
 /**
- * GitHub REST API client. Uses GITHUB_TOKEN (fine-grained token with Issues
- * and Actions access to GITHUB_REPO).
+ * GitHub REST API client. Each user connects a token (fine-grained, with
+ * Issues and Actions access) and one repository in Settings > Connections.
  */
-export function github(): RestClient {
-  if (client) return client;
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) throw new AppError('GITHUB_TOKEN is not configured', { statusCode: 503 });
-  client = new RestClient({
+export function createGithubClient(token: string): RestClient {
+  return new RestClient({
     service: 'github',
     baseURL: 'https://api.github.com',
     bearerToken: token,
@@ -22,30 +17,36 @@ export function github(): RestClient {
     },
     timeoutMs: 15000,
   });
-  return client;
+}
+
+/** Client for the current user's GitHub connection */
+export function github(): RestClient {
+  return createGithubClient(requireConnection('github').secrets.token);
+}
+
+/** Repository of the current user's GitHub connection, as owner/repo */
+export function connectedRepo(): string | null {
+  const repo = findConnection('github')?.config.repo;
+  return typeof repo === 'string' ? repo : null;
 }
 
 /**
- * Resolve "owner/repo", defaulting to GITHUB_REPO. Only the configured repo
- * (or repos listed in GITHUB_ALLOWED_REPOS) may be used by agents.
+ * Resolve "owner/repo", defaulting to the connected repository. Agents may
+ * only use the repository the user connected.
  */
 export function resolveRepo(repo?: string): { owner: string; name: string; full: string } {
-  const raw = repo || process.env.GITHUB_REPO;
-  if (!raw) throw new AppError('GITHUB_REPO is not configured', { statusCode: 503 });
+  const connected = requireConnection('github').config.repo as string | undefined;
+  if (!connected) throw new AppError('The GitHub connection has no repository', { statusCode: 409 });
+
+  const raw = repo || connected;
   const full = normalizeRepo(raw);
   if (!full) {
     throw new AppError(`Invalid repository: ${raw}. Use owner/repo or https://github.com/owner/repo`, {
       statusCode: 400,
     });
   }
-
-  const allowed = new Set(
-    [process.env.GITHUB_REPO, ...(process.env.GITHUB_ALLOWED_REPOS || '').split(',')]
-      .map((r) => (r ? normalizeRepo(r)?.toLowerCase() : undefined))
-      .filter(Boolean) as string[]
-  );
-  if (!allowed.has(full.toLowerCase())) {
-    throw new AppError(`Repository ${full} is not in the allowed list`, { statusCode: 403 });
+  if (full.toLowerCase() !== connected.toLowerCase()) {
+    throw new AppError(`Repository ${full} is not the connected repository (${connected})`, { statusCode: 403 });
   }
   const [owner, name] = full.split('/');
   return { owner, name, full };
@@ -70,5 +71,25 @@ export function normalizeRepo(value: string): string | null {
 }
 
 export function isGithubConfigured(): boolean {
-  return Boolean(process.env.GITHUB_TOKEN && process.env.GITHUB_REPO);
+  const connection = findConnection('github');
+  return Boolean(connection?.secrets.token && connection.config.repo);
+}
+
+/**
+ * Confirm the token can read the repository. Returns the canonical name and
+ * whether the token can push (needed to re-run jobs and manage issues).
+ */
+export async function verifyGithubAccess(
+  token: string,
+  repo: string
+): Promise<{ repo: string; canWrite: boolean; private: boolean }> {
+  const full = normalizeRepo(repo);
+  if (!full) throw new AppError('Use owner/repo or https://github.com/owner/repo', { statusCode: 400 });
+  const data = await createGithubClient(token).get<{
+    full_name: string;
+    private: boolean;
+    permissions?: { push?: boolean; admin?: boolean; maintain?: boolean };
+  }>(`/repos/${full}`);
+  const p = data.permissions ?? {};
+  return { repo: data.full_name, canWrite: Boolean(p.push || p.admin || p.maintain), private: data.private };
 }

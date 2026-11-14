@@ -18,6 +18,10 @@ const jwtSecret = required('JWT_SECRET', 'dev-only-insecure-secret-change-me-012
 if (isProduction && jwtSecret.length < 32) {
   throw new Error('JWT_SECRET must be at least 32 characters in production');
 }
+// Encrypts the credentials users connect (Bachs, GitHub, Slack)
+if (isProduction && (process.env.ENCRYPTION_KEY ?? '').length < 32) {
+  throw new Error('ENCRYPTION_KEY must be set to at least 32 characters in production');
+}
 
 export const config = {
   isProduction,
@@ -35,8 +39,6 @@ export const config = {
   allowRegistration: process.env.ALLOW_REGISTRATION !== 'false',
   /** Secret used to derive per-workflow webhook signing secrets */
   webhookSigningSecret: required('WEBHOOK_SIGNING_SECRET', 'dev-only-webhook-secret'),
-  bachsWebhookSecret: process.env.BACHS_WEBHOOK_SECRET || '',
-  githubWebhookSecret: process.env.GITHUB_WEBHOOK_SECRET || '',
   cookieName: 'athena_token',
   /** Set "none" when the dashboard and API are on different sites (requires HTTPS) */
   cookieSameSite: (process.env.COOKIE_SAMESITE || 'lax') as 'lax' | 'strict' | 'none',

@@ -17,6 +17,8 @@ import workflowRoutes from './routes/workflows.routes';
 import appRoutes from './routes/apps.routes';
 import webhookRoutes from './routes/webhooks.routes';
 import eventRoutes from './routes/events.routes';
+import connectionRoutes from './routes/connections.routes';
+import { withConnections } from './middleware/user-scope';
 
 export function createApp(): Express {
   const app = express();
@@ -67,7 +69,8 @@ export function createApp(): Express {
   app.use('/api/executions', requireAuth, executionRoutes);
   app.use('/api/approvals', requireAuth, approvalRoutes);
   app.use('/api/workflows', requireAuth, workflowRoutes);
-  app.use('/api/apps', requireAuth, appRoutes);
+  app.use('/api/apps', requireAuth, withConnections, appRoutes);
+  app.use('/api/connections', requireAuth, connectionRoutes);
   app.use('/api/events', requireAuth, eventRoutes);
 
   app.use(notFoundHandler);
