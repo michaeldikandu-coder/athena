@@ -120,7 +120,14 @@ export function AgentForm({
       <div className="grid gap-4 md:grid-cols-3">
         <div>
           <label className="label">Provider</label>
-          <select className="input" value={value.provider} onChange={(e) => set('provider', e.target.value as 'anthropic' | 'groq')}>
+          <select
+            className="input"
+            value={value.provider}
+            onChange={(e) =>
+              // A model name belongs to one provider; clear it so the server default for the new one is used
+              setValue((prev) => ({ ...prev, provider: e.target.value as 'anthropic' | 'groq', model: '' }))
+            }
+          >
             <option value="anthropic">Anthropic Claude</option>
             <option value="groq">Groq</option>
           </select>

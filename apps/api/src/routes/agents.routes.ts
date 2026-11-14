@@ -136,7 +136,12 @@ router.put(
     if (tools) assertToolsExist(tools);
 
     const update: Record<string, unknown> = { ...rest };
-    if (mc) update.modelConfig = { ...mc, model: mc.model || defaultModel(mc.provider) };
+    if (mc) {
+      // A model kept from the other provider would fail on every run
+      const looksWrong =
+        mc.model && ((mc.provider === 'groq' && /^claude-/i.test(mc.model)) || (mc.provider === 'anthropic' && !/^claude-/i.test(mc.model)));
+      update.modelConfig = { ...mc, model: !mc.model || looksWrong ? defaultModel(mc.provider) : mc.model };
+    }
 
     const agent = await AgentModel.findOneAndUpdate(
       { _id: req.params.id, userId: req.user!.id },
