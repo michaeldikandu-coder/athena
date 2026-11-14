@@ -16,6 +16,8 @@ export interface IAgent {
   permissions: string[];
   /** Application that installed this agent, e.g. "moneyguard". Empty for custom agents. */
   application?: string;
+  /** Hash of the application template this agent was last synced to */
+  templateVersion?: string;
   maxIterations: number;
   status: 'active' | 'inactive' | 'error';
   userId: string;
@@ -77,6 +79,9 @@ export const AgentSchema = new Schema<IAgent>(
     application: {
       type: String,
       index: true,
+    },
+    templateVersion: {
+      type: String,
     },
     maxIterations: {
       type: Number,

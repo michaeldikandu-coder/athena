@@ -1,8 +1,30 @@
 {
-  // Solution file: it checks no files itself, it only lists the projects.
-  // `tsc -b` builds them in dependency order; the editor uses each project's own tsconfig.
+  "$schema": "https://json.schemastore.org/tsconfig",
+  // Solution file and shared options in one place.
+  // - "files": [] means this file checks nothing itself.
+  // - "references" lists the backend projects; `tsc -b` builds them in order.
+  // - Each package extends this file for compilerOptions and sets its own "include".
   // The dashboard (apps/dashboard) has its own Next.js tsconfig and is built by Next.
   "files": [],
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022"],
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"],
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true
+  },
   "references": [
     { "path": "packages/shared" },
     { "path": "packages/database" },

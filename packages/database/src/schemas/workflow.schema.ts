@@ -20,6 +20,8 @@ export interface IWorkflow {
   steps: IWorkflowStep[];
   status: 'active' | 'inactive';
   application?: string;
+  /** Key of the application workflow template this was created from */
+  templateKey?: string;
   lastRunAt?: Date;
   userId: string;
   createdAt: Date;
@@ -98,6 +100,9 @@ export const WorkflowSchema = new Schema<IWorkflow>(
     application: {
       type: String,
       index: true,
+    },
+    templateKey: {
+      type: String,
     },
     lastRunAt: {
       type: Date,
