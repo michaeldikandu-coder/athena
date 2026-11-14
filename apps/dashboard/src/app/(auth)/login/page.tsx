@@ -10,7 +10,7 @@ import { describeError } from '@/lib/api';
 
 function safeNext(value: string | null): string {
   // Only allow same-site relative paths
-  return value && value.startsWith('/') && !value.startsWith('//') ? value : '/';
+  return value && value.startsWith('/') && !value.startsWith('//') ? value : '/overview';
 }
 
 function LoginForm() {

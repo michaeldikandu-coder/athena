@@ -10,7 +10,7 @@ import { api } from '@/lib/api';
 import { useRealtime, useRealtimeStatus } from '@/lib/realtime';
 
 const PRIMARY = [
-  { href: '/', label: 'Overview' },
+  { href: '/overview', label: 'Overview' },
   { href: '/apps/moneyguard', label: 'MoneyGuard' },
   { href: '/apps/opsguard', label: 'OpsGuard' },
   { href: '/executions', label: 'Runs' },
@@ -25,7 +25,6 @@ const BUILD = [
 ] as const;
 
 function isActive(pathname: string, href: string): boolean {
-  if (href === '/') return pathname === '/';
   // /apps is the Applications list only; /apps/moneyguard and /apps/opsguard have their own words
   if (href === '/apps') return pathname === '/apps';
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -45,7 +44,7 @@ function Glyph({ name }: { name: (typeof BUILD)[number]['icon'] }) {
 
 function Logo() {
   return (
-    <Link href="/" className="flex shrink-0 items-center gap-2.5" aria-label="Athena home">
+    <Link href="/overview" className="flex shrink-0 items-center gap-2.5" aria-label="Athena overview">
       <span className="mark-dots" aria-hidden />
       <span className="text-[20px] font-medium tracking-[-0.03em]">Athena</span>
     </Link>

@@ -8,7 +8,7 @@ export function AuthFrame({ title, lead, children }: { title: string; lead: stri
   return (
     <div className="grid min-h-screen lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
       <div className="flex flex-col px-6 py-8 md:px-12 xl:px-20">
-        <Link href="/login" className="flex items-center gap-2.5" aria-label="Athena">
+        <Link href="/" className="flex items-center gap-2.5" aria-label="Athena home">
           <span className="mark-dots" aria-hidden />
           <span className="text-[20px] font-medium tracking-[-0.03em]">Athena</span>
         </Link>
