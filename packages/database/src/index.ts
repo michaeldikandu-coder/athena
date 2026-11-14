@@ -4,6 +4,10 @@ export {
   connectDatabase,
   disconnectDatabase,
   getDatabaseHealth,
+  getDatabaseStatus,
+  explainMongoError,
+  isMongoUnavailableError,
+  redactMongoUri,
 } from './connection';
 
 // Models

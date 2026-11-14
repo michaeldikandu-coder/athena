@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { api, describeError } from '@/lib/api';
 import type { Agent } from '@/lib/types';
-import { AppBadge, Button, EmptyState, ErrorBanner, LoadingBlock, PageHeader, StatusBadge } from '@/components/ui';
+import { AppBadge, ButtonLink, EmptyState, ErrorBanner, LoadingBlock, PageHeader, StatusBadge } from '@/components/ui';
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[] | null>(null);
@@ -19,12 +19,11 @@ export default function AgentsPage() {
   return (
     <div>
       <PageHeader
-        title="Agents"
-        description="Agents are configuration: a prompt, a model, tools, and permissions. Application agents and custom agents run on the same runtime."
+        eyebrow="Build"
+        title="Agents on the shared runtime"
+        description="An agent is a prompt, a model, a set of tools, and the permissions to use them. Installed and custom agents run the same way."
         actions={
-          <Link href="/agents/new">
-            <Button>New agent</Button>
-          </Link>
+          <ButtonLink href="/agents/new">Create an agent</ButtonLink>
         }
       />
       <ErrorBanner message={error} />
@@ -35,14 +34,14 @@ export default function AgentsPage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {agents.map((a) => (
-            <Link key={a.id} href={`/agents/${a.id}`} className="rounded-lg border border-ink-800 bg-ink-900 p-4 hover:border-ink-700">
+            <Link key={a.id} href={`/agents/${a.id}`} className="card-link block p-5">
               <div className="mb-2 flex items-center gap-2">
-                <span className="font-medium">{a.name}</span>
+                <span className="text-[17px] font-medium tracking-[-0.01em]">{a.name}</span>
                 <AppBadge application={a.application} />
                 <span className="ml-auto"><StatusBadge status={a.status} /></span>
               </div>
-              <p className="mb-3 line-clamp-2 text-sm text-ink-400">{a.description}</p>
-              <div className="flex gap-4 text-xs text-ink-400">
+              <p className="mb-4 line-clamp-2 text-[15px] leading-relaxed text-ink-soft">{a.description}</p>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-3 text-label text-muted">
                 <span>{a.tools.length} tools</span>
                 <span>{a.permissions.length} permissions</span>
                 <span>{a.modelConfig.provider} · {a.modelConfig.model}</span>

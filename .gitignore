@@ -7,6 +7,7 @@ node_modules/
 dist/
 build/
 .next/
+.next-dev/
 out/
 
 # Environment variables
@@ -45,3 +46,6 @@ coverage/
 # Misc
 .turbo
 .vercel
+
+# Design skill working files
+.taste-skill/

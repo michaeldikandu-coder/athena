@@ -36,7 +36,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <AuthFrame title="Create your Athena account">
+    <AuthFrame title="Create your console account" lead="The first account on a new install becomes the admin. You can install both agents right after.">
       <form onSubmit={submit} className="space-y-4">
         <ErrorBanner message={error} />
         <div>
@@ -50,11 +50,11 @@ export default function RegisterPage() {
         <div>
           <label className="label" htmlFor="password">Password</label>
           <input id="password" className="input" type="password" autoComplete="new-password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} />
-          <p className="mt-1 text-xs text-ink-400">At least 8 characters with upper and lower case letters and a number.</p>
+          <p className="mt-1.5 text-label text-muted">At least 8 characters with upper and lower case letters and a number.</p>
         </div>
         <Button type="submit" loading={busy} className="w-full">Create account</Button>
-        <p className="text-center text-sm text-ink-400">
-          Already have an account? <Link href="/login" className="text-accent-400 hover:underline">Sign in</Link>
+        <p className="text-[15px] text-ink-soft">
+          Already have an account? <Link href="/login" className="link font-medium">Sign in</Link>
         </p>
       </form>
     </AuthFrame>

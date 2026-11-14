@@ -3,7 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
-import { getDatabaseHealth } from '@athena/database';
+import { getDatabaseStatus } from '@athena/database';
 import { successResponse } from '@athena/shared';
 import { config } from './config';
 import { requireAuth } from './middleware/auth';
@@ -51,8 +51,10 @@ export function createApp(): Express {
   );
 
   app.get('/api/health', (_req, res) => {
-    const db = getDatabaseHealth();
-    res.status(db ? 200 : 503).json(successResponse({ status: db ? 'ok' : 'degraded', database: db }));
+    const db = getDatabaseStatus();
+    res.status(db.connected ? 200 : 503).json(
+      successResponse({ status: db.connected ? 'ok' : 'degraded', database: db.connected, databaseReason: db.reason })
+    );
   });
 
   // Public

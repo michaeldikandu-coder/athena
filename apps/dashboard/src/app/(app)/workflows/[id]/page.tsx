@@ -96,15 +96,15 @@ export default function WorkflowDetailPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card title="Trigger">
-          <p className="mb-2 text-sm">
-            <Badge tone="accent">{workflow.trigger.type}</Badge>
-            {workflow.trigger.config.event && <span className="ml-2 font-mono text-sm">{workflow.trigger.config.event}</span>}
-            {workflow.trigger.config.intervalMinutes && <span className="ml-2 text-sm">every {workflow.trigger.config.intervalMinutes} minutes</span>}
+          <p className="mb-2 text-[15px]">
+            <Badge tone="action">{workflow.trigger.type}</Badge>
+            {workflow.trigger.config.event && <span className="ml-2 font-mono text-[15px]">{workflow.trigger.config.event}</span>}
+            {workflow.trigger.config.intervalMinutes && <span className="ml-2 text-[15px]">every {workflow.trigger.config.intervalMinutes} minutes</span>}
           </p>
           {workflow.trigger.config.conditions && (
             <>
               <div className="label mt-3">Only when</div>
-              <ul className="space-y-1 font-mono text-xs text-ink-300">
+              <ul className="space-y-1 font-mono text-label text-ink-soft">
                 {workflow.trigger.config.conditions.map((c: { path: string; operator: string; value?: unknown }, i: number) => (
                   <li key={i}>{c.path} {c.operator} {c.value !== undefined ? JSON.stringify(c.value) : ''}</li>
                 ))}
@@ -112,24 +112,24 @@ export default function WorkflowDetailPage() {
             </>
           )}
           {workflow.trigger.type === 'webhook' && workflow.trigger.config.event?.startsWith('bachs.') && (
-            <p className="mt-3 text-xs text-ink-400">Receives events from <span className="font-mono">POST /api/webhooks/bachs</span>. Add a Bachs webhook endpoint there subscribed to <span className="font-mono">{workflow.trigger.config.event.slice(6)}</span>.</p>
+            <p className="mt-3 text-label text-muted">Receives events from <span className="font-mono">POST /api/webhooks/bachs</span>. Add a Bachs webhook endpoint there subscribed to <span className="font-mono">{workflow.trigger.config.event.slice(6)}</span>.</p>
           )}
           {workflow.trigger.type === 'webhook' && workflow.trigger.config.event?.startsWith('github.') && (
-            <p className="mt-3 text-xs text-ink-400">Receives events from <span className="font-mono">POST /api/webhooks/github</span>. Add a repository webhook pointing there.</p>
+            <p className="mt-3 text-label text-muted">Receives events from <span className="font-mono">POST /api/webhooks/github</span>. Add a repository webhook pointing there.</p>
           )}
           {workflow.webhook && (
-            <div className="mt-3 space-y-2 text-xs">
+            <div className="mt-3 space-y-2 text-label">
               <div>
                 <div className="label">Workflow webhook URL</div>
-                <code className="block break-all rounded bg-ink-950 p-2 text-ink-300">{workflow.webhook.url}</code>
+                <code className="block break-all rounded bg-bg p-2 text-ink-soft">{workflow.webhook.url}</code>
               </div>
               <div>
                 <div className="label">Signing secret</div>
-                <code className="block break-all rounded bg-ink-950 p-2 text-ink-300">
+                <code className="block break-all rounded bg-bg p-2 text-ink-soft">
                   {showSecret ? workflow.webhook.secret : '•'.repeat(24)}
                 </code>
-                <button className="mt-1 text-ink-400 hover:text-ink-100" onClick={() => setShowSecret(!showSecret)}>{showSecret ? 'Hide' : 'Reveal'}</button>
-                <p className="mt-1 text-ink-400">
+                <button className="mt-1 text-muted hover:text-ink" onClick={() => setShowSecret(!showSecret)}>{showSecret ? 'Hide' : 'Reveal'}</button>
+                <p className="mt-1 text-muted">
                   Send <span className="font-mono">X-Athena-Signature: sha256=&lt;HMAC-SHA256 of the raw body&gt;</span>.
                 </p>
               </div>
@@ -139,24 +139,24 @@ export default function WorkflowDetailPage() {
 
         <Card title="Run manually">
           <label className="label">Trigger payload (JSON)</label>
-          <textarea className="input mb-3 min-h-[8rem] font-mono text-xs" value={payload} onChange={(e) => setPayload(e.target.value)} spellCheck={false} />
+          <textarea className="input mb-3 min-h-[8rem] font-mono text-label" value={payload} onChange={(e) => setPayload(e.target.value)} spellCheck={false} />
           <Button loading={running} disabled={workflow.status !== 'active'} onClick={() => void run()}>Run workflow</Button>
-          {workflow.status !== 'active' && <p className="mt-2 text-xs text-ink-400">Enable the workflow to run it.</p>}
+          {workflow.status !== 'active' && <p className="mt-2 text-label text-muted">Enable the workflow to run it.</p>}
         </Card>
       </div>
 
       <Card title="Steps" className="mt-6">
         <ol className="space-y-3">
           {workflow.steps.map((s, i) => (
-            <li key={s.id} className="rounded-md border border-ink-800 p-3">
-              <div className="mb-2 flex items-center gap-2 text-sm">
-                <span className="text-ink-400">{i + 1}.</span>
+            <li key={s.id} className="rounded-md border border-line p-3">
+              <div className="mb-2 flex items-center gap-2 text-[15px]">
+                <span className="text-muted">{i + 1}.</span>
                 <span className="font-mono">{s.id}</span>
                 <Badge>{s.type}</Badge>
-                {s.type === 'tool_call' && <span className="font-mono text-xs text-sky-300">{String(s.config.tool)}</span>}
+                {s.type === 'tool_call' && <span className="font-mono text-label text-action">{String(s.config.tool)}</span>}
               </div>
               {s.type === 'agent_task' ? (
-                <p className="whitespace-pre-wrap text-sm text-ink-300">{String(s.config.task)}</p>
+                <p className="whitespace-pre-wrap text-[15px] text-ink-soft">{String(s.config.task)}</p>
               ) : (
                 <JsonBlock value={s.config} />
               )}

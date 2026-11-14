@@ -65,7 +65,7 @@ export default function NewWorkflowPage() {
 
   return (
     <div className="max-w-4xl">
-      <PageHeader title="New workflow" />
+      <PageHeader eyebrow="Build" title="Create a workflow" description="Write the trigger and steps as JSON. The definition is validated before it is saved." />
       <Card>
         <form onSubmit={submit} className="space-y-4">
           <ErrorBanner message={error} />
@@ -89,8 +89,8 @@ export default function NewWorkflowPage() {
           </div>
           <div>
             <label className="label">Definition (trigger and steps)</label>
-            <textarea className="input min-h-[22rem] font-mono text-xs" value={definition} onChange={(e) => setDefinition(e.target.value)} spellCheck={false} />
-            <div className="mt-2 space-y-1 text-xs text-ink-400">
+            <textarea className="input min-h-[22rem] font-mono text-label" value={definition} onChange={(e) => setDefinition(e.target.value)} spellCheck={false} />
+            <div className="mt-2 space-y-1 text-label text-muted">
               <p>Triggers: <span className="font-mono">event</span> (config.event, supports *), <span className="font-mono">webhook</span> (signed URL shown after saving), <span className="font-mono">schedule</span> (config.intervalMinutes), <span className="font-mono">manual</span>. Optional config.conditions filter the payload.</p>
               <p>Steps: <span className="font-mono">tool_call</span> {'{tool, input}'}, <span className="font-mono">agent_task</span> {'{task}'}, <span className="font-mono">approval</span> {'{message}'}, <span className="font-mono">condition</span> {'{conditions, then, else}'}. Templates: <span className="font-mono">{'{{trigger.payload.x}}'}</span>, <span className="font-mono">{'{{steps.<id>.output.y}}'}</span>.</p>
             </div>

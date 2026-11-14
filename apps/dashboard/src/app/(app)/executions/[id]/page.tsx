@@ -8,17 +8,7 @@ import { formatDuration, timeAgo } from '@/lib/format';
 import { useRealtime } from '@/lib/realtime';
 import { ApprovalCard } from '@/components/approval-card';
 import { Timeline } from '@/components/timeline';
-import {
-  AppBadge,
-  Button,
-  Card,
-  ErrorBanner,
-  JsonBlock,
-  LoadingBlock,
-  PageHeader,
-  StatusBadge,
-  TextLink,
-} from '@/components/ui';
+import { AppBadge, Button, Card, Dl, ErrorBanner, JsonBlock, LoadingBlock, Mono, StatusBadge, TextLink } from '@/components/ui';
 
 const ACTIVE = ['pending', 'running', 'waiting_approval'];
 
@@ -31,6 +21,7 @@ export default function ExecutionDetailPage() {
   const load = useCallback(async () => {
     try {
       setExecution((await api<ExecutionDetail>(`/executions/${id}`)).data);
+      setError(null);
     } catch (err) {
       setError(describeError(err));
     }
@@ -71,101 +62,123 @@ export default function ExecutionDetailPage() {
   if (!execution) return <LoadingBlock />;
 
   const pendingApprovals = execution.approvals.filter((a) => a.status === 'pending');
+  const decided = execution.approvals.filter((a) => a.status !== 'pending');
   const isActive = ACTIVE.includes(execution.status);
+  const tools = execution.timeline.filter((e) => e.type === 'tool_result');
 
   return (
     <div>
-      <PageHeader
-        title={
-          <span className="flex flex-wrap items-center gap-3">
-            {execution.agentName ?? 'Execution'} <StatusBadge status={execution.status} />
+      <div className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 text-[14px] text-muted">
+        <TextLink href="/executions">Runs</TextLink>
+        <span aria-hidden>/</span>
+        <Mono>{execution.id}</Mono>
+      </div>
+
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-6">
+        <div className="min-w-0 max-w-[78ch]">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <StatusBadge status={execution.status} />
             <AppBadge application={execution.application} />
-          </span>
-        }
-        description={execution.task}
-        actions={
-          isActive && (
-            <Button variant="secondary" loading={cancelling} onClick={() => void cancel()}>
-              Cancel
-            </Button>
-          )
-        }
-      />
+            <span className="text-[14px] text-muted">
+              {execution.agentName} · started {timeAgo(execution.startedAt)}
+            </span>
+          </div>
+          <div className="overflow-hidden pb-1">
+            <h1 className="enter-rise text-[clamp(24px,1.1vw+18px,32px)] leading-[1.15]">{execution.task ?? 'Untitled run'}</h1>
+          </div>
+        </div>
+        {isActive && (
+          <Button variant="secondary" loading={cancelling} onClick={() => void cancel()}>
+            Cancel run
+          </Button>
+        )}
+      </div>
       <ErrorBanner message={error} />
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_20rem]">
-        <div className="space-y-6">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="min-w-0 space-y-6">
           {pendingApprovals.map((a) => (
             <ApprovalCard key={a.id} approval={a} onDecided={() => void load()} />
           ))}
 
           {execution.result?.summary && (
-            <Card title="Final report">
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-100">{execution.result.summary}</p>
+            <Card title="Agent’s report">
+              <p className="max-w-[72ch] whitespace-pre-wrap text-[16px] leading-[1.7] text-ink">{execution.result.summary}</p>
             </Card>
           )}
           {execution.error && (
-            <Card title="Error">
-              <p className="text-sm text-red-300">{execution.error}</p>
-            </Card>
+            <div className="rounded-lg border border-bad-line bg-bad-soft p-5">
+              <div className="text-label font-medium text-bad">Why the run failed</div>
+              <p className="mt-1 text-[16px] text-ink">{execution.error}</p>
+            </div>
           )}
 
-          <Card title={<span className="flex items-center gap-2">Timeline {isActive && <span className="h-2 w-2 animate-pulse rounded-full bg-sky-400" />}</span>}>
+          <Card
+            title={
+              <span className="flex items-center gap-2.5">
+                Timeline
+                {isActive && (
+                  <span className="flex items-center gap-1.5 text-label font-medium text-action">
+                    <span className="live-dot h-1.5 w-1.5 rounded-full bg-action" /> live
+                  </span>
+                )}
+              </span>
+            }
+            actions={<span className="tabular text-label text-muted">{execution.timeline.length} events</span>}
+          >
             <Timeline events={execution.timeline} />
           </Card>
         </div>
 
-        <aside className="space-y-4">
-          <Card title="Details">
-            <dl className="space-y-2 text-sm">
-              <Row label="Started">{timeAgo(execution.startedAt)}</Row>
-              <Row label="Duration">{formatDuration(execution.durationMs)}</Row>
-              <Row label="Iterations">{execution.iterations}</Row>
-              <Row label="Tool calls">{execution.toolCallCount}</Row>
-              <Row label="Tokens">
-                {execution.usage.inputTokens.toLocaleString()} in · {execution.usage.outputTokens.toLocaleString()} out
-              </Row>
-              <Row label="Trigger">
-                {execution.trigger.type} · {execution.trigger.source}
-              </Row>
-              <Row label="Agent">
-                <TextLink href={`/agents/${execution.agentId}`}>{execution.agentName ?? execution.agentId}</TextLink>
-              </Row>
-              {execution.workflowId && (
-                <Row label="Workflow">
-                  <TextLink href={`/workflows/${execution.workflowId}`}>View</TextLink>
-                </Row>
-              )}
-            </dl>
+        <aside className="space-y-5">
+          <Card title="Run">
+            <Dl
+              rows={[
+                ['Duration', formatDuration(execution.durationMs)],
+                ['Model turns', execution.iterations],
+                ['Tool calls', execution.toolCallCount],
+                ['Tokens in', <span key="i" className="tabular">{execution.usage.inputTokens.toLocaleString()}</span>],
+                ['Tokens out', <span key="o" className="tabular">{execution.usage.outputTokens.toLocaleString()}</span>],
+                ['Started by', `${execution.trigger.type} · ${execution.trigger.source}`],
+                ['Agent', <TextLink key="a" href={`/agents/${execution.agentId}`}>{execution.agentName ?? 'Agent'}</TextLink>],
+                ...(execution.workflowId
+                  ? ([['Workflow', <TextLink key="w" href={`/workflows/${execution.workflowId}`}>Open workflow</TextLink>]] as Array<[string, React.ReactNode]>)
+                  : []),
+              ]}
+            />
           </Card>
-          <Card title="Trigger payload">
-            <JsonBlock value={execution.trigger.payload} />
-          </Card>
-          {execution.approvals.length > pendingApprovals.length && (
-            <Card title="Approval history">
-              <ul className="space-y-2 text-sm">
-                {execution.approvals
-                  .filter((a) => a.status !== 'pending')
-                  .map((a) => (
-                    <li key={a.id} className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-xs">{a.requestedAction.tool}</span>
-                      <StatusBadge status={a.status} />
-                    </li>
-                  ))}
+
+          {tools.length > 0 && (
+            <Card title="Tools used">
+              <ul className="space-y-2">
+                {tools.map((t) => (
+                  <li key={t.id} className="flex items-center justify-between gap-3">
+                    <Mono className="truncate">{t.tool}</Mono>
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${t.status === 'failure' ? 'bg-bad' : 'bg-ok'}`} aria-label={t.status === 'failure' ? 'failed' : 'ok'} />
+                  </li>
+                ))}
               </ul>
             </Card>
           )}
+
+          {decided.length > 0 && (
+            <Card title="Decisions">
+              <ul className="space-y-2.5">
+                {decided.map((a) => (
+                  <li key={a.id} className="flex items-center justify-between gap-2">
+                    <Mono>{a.requestedAction.tool}</Mono>
+                    <StatusBadge status={a.status} kind="approval" />
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
+          <Card title="Trigger payload">
+            <JsonBlock value={execution.trigger.payload} />
+          </Card>
         </aside>
       </div>
-    </div>
-  );
-}
-
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex justify-between gap-3">
-      <dt className="text-ink-400">{label}</dt>
-      <dd className="text-right text-ink-100">{children}</dd>
     </div>
   );
 }

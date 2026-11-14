@@ -53,8 +53,8 @@ function LoginForm() {
         <input id="password" className="input" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
       </div>
       <Button type="submit" loading={busy} className="w-full">Sign in</Button>
-      <p className="text-center text-sm text-ink-400">
-        No account? <Link href="/register" className="text-accent-400 hover:underline">Create one</Link>
+      <p className="text-[15px] text-ink-soft">
+        No account? <Link href="/register" className="link font-medium">Create one</Link>
       </p>
     </form>
   );
@@ -62,7 +62,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <AuthFrame title="Sign in to Athena">
+    <AuthFrame title="Sign in to the agent console" lead="Watch MoneyGuard and OpsGuard work, and approve refunds, flags, and deploy retries before they happen.">
       <Suspense>
         <LoginForm />
       </Suspense>

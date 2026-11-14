@@ -18,7 +18,7 @@ export function formatDuration(ms: number | null | undefined): string {
 }
 
 export function formatTime(value: string): string {
-  return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 }
 
 export function prettyJson(value: unknown): string {

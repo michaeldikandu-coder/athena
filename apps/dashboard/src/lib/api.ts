@@ -1,10 +1,12 @@
 export class ApiError extends Error {
   status: number;
+  code?: string;
   details?: unknown;
 
-  constructor(message: string, status: number, details?: unknown) {
+  constructor(message: string, status: number, code?: string, details?: unknown) {
     super(message);
     this.status = status;
+    this.code = code;
     this.details = details;
   }
 }
@@ -23,25 +25,34 @@ export async function api<T = any>(
   path: string,
   options: { method?: string; body?: unknown; signal?: AbortSignal } = {}
 ): Promise<{ data: T; meta?: Record<string, any> }> {
-  const response = await fetch(`/api${path}`, {
-    method: options.method ?? (options.body !== undefined ? 'POST' : 'GET'),
-    headers: options.body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-    credentials: 'include',
-    cache: 'no-store',
-    signal: options.signal,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`/api${path}`, {
+      method: options.method ?? (options.body !== undefined ? 'POST' : 'GET'),
+      headers: options.body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      credentials: 'include',
+      cache: 'no-store',
+      signal: options.signal,
+    });
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') throw error;
+    throw new ApiError('Cannot reach the dashboard server.', 0, 'network_error');
+  }
 
   let payload: Envelope<T> | null = null;
   try {
     payload = (await response.json()) as Envelope<T>;
   } catch {
-    // non-JSON response
+    // non-JSON response: the Next.js proxy answers with plain text when the API is down
   }
 
   if (!response.ok || !payload?.success) {
+    if (!payload && response.status >= 500) {
+      throw new ApiError('The Athena API is not answering. Start it with npm run dev:api.', response.status, 'api_unreachable');
+    }
     const message = payload?.error?.message || `Request failed (${response.status})`;
-    throw new ApiError(message, response.status, payload?.error?.details);
+    throw new ApiError(message, response.status, payload?.error?.code, payload?.error?.details);
   }
   return { data: payload.data as T, meta: payload.meta };
 }

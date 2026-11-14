@@ -10,8 +10,9 @@ export default function NewAgentPage() {
   return (
     <div className="max-w-4xl">
       <PageHeader
-        title="New agent"
-        description="Pick tools from the shared registry and grant the permissions they need. Built-in memory tools are added when the agent has read:memory / write:memory."
+        eyebrow="Build"
+        title="Create an agent"
+        description="Pick tools from the shared registry and grant the permissions they need. Memory tools are added when the agent holds read:memory and write:memory."
       />
       <Card>
         <AgentForm

@@ -40,18 +40,18 @@ export default function ApprovalsPage() {
   return (
     <div>
       <PageHeader
-        title="Approvals"
-        description="High-risk tool calls pause here until a human decides. Rejections are sent back to the agent, which explains and continues."
+        title="Approvals for high-risk actions"
+        description="Refunds, customer flags, and deploy retries wait here until you decide. A rejection goes back to the agent with your note."
       />
       <ErrorBanner message={error} />
-      <div className="mb-4 flex gap-1 border-b border-ink-800">
+      <div className="mb-6 flex gap-1 border-b border-line">
         {TABS.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
             className={clsx(
-              '-mb-px border-b-2 px-3 py-2 text-sm',
-              tab === t.key ? 'border-accent-500 text-ink-100' : 'border-transparent text-ink-400 hover:text-ink-100'
+              '-mb-px flex h-11 items-center border-b-2 px-3 text-[15px] font-medium',
+              tab === t.key ? 'border-ink text-ink' : 'border-transparent text-muted hover:text-ink'
             )}
           >
             {t.label}

@@ -1,6 +1,7 @@
 import Groq from 'groq-sdk';
 import { safeJsonParse } from '@athena/shared';
 import { LLMClient, LLMMessage, LLMRequest, LLMResponse } from './llm.types';
+import { providerError } from './provider-error';
 
 type GroqMessage = Groq.Chat.Completions.ChatCompletionMessageParam;
 
@@ -63,6 +64,8 @@ export class GroqClient implements LLMClient {
       max_tokens: request.maxTokens ?? 8192,
       temperature: request.temperature,
       ...(tools.length > 0 ? { tools, tool_choice: 'auto' as const } : {}),
+    }).catch((error: unknown) => {
+      throw providerError('Groq', error);
     });
 
     const choice = response.choices[0];

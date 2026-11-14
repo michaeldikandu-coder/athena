@@ -108,7 +108,7 @@ export function AgentForm({
       <div>
         <label className="label">System prompt</label>
         <textarea
-          className="input min-h-[12rem] font-mono text-xs"
+          className="input min-h-[12rem] font-mono text-label"
           required
           minLength={10}
           maxLength={20000}
@@ -139,13 +139,13 @@ export function AgentForm({
         <label className="label">Tools</label>
         <div className="grid gap-2 md:grid-cols-2">
           {tools.map((t) => (
-            <label key={t.id} className="flex cursor-pointer items-start gap-2 rounded-md border border-ink-800 p-2 hover:border-ink-700">
+            <label key={t.id} className="flex cursor-pointer items-start gap-2 rounded-md border border-line p-2 hover:border-line-strong">
               <input type="checkbox" className="mt-1" checked={value.tools.includes(t.id)} onChange={() => toggleTool(t.id)} />
               <span>
-                <span className="font-mono text-xs text-ink-100">{t.id}</span>{' '}
+                <span className="font-mono text-label text-ink">{t.id}</span>{' '}
                 <Badge tone={t.permissionLevel}>{t.permissionLevel}</Badge>
                 {t.requiresApproval && <Badge tone="medium" className="ml-1">approval</Badge>}
-                <span className="block text-xs text-ink-400">{t.description}</span>
+                <span className="block text-label text-muted">{t.description}</span>
               </span>
             </label>
           ))}
@@ -160,7 +160,7 @@ export function AgentForm({
               type="button"
               key={p}
               onClick={() => set('permissions', value.permissions.filter((x) => x !== p))}
-              className="rounded bg-ink-800 px-1.5 py-0.5 font-mono text-[11px] text-ink-300 hover:bg-red-500/20 hover:text-red-300"
+              className="rounded bg-surface px-1.5 py-0.5 font-mono text-[11px] text-ink-soft hover:bg-bad-soft hover:text-bad"
               title="Remove"
             >
               {p} ×
@@ -169,7 +169,7 @@ export function AgentForm({
         </div>
         <div className="flex gap-2">
           <input
-            className="input max-w-xs font-mono text-xs"
+            className="input max-w-xs font-mono text-label"
             placeholder="read:transactions"
             value={newPermission}
             onChange={(e) => setNewPermission(e.target.value)}
@@ -183,14 +183,14 @@ export function AgentForm({
           <Button type="button" variant="secondary" onClick={() => addPermission(newPermission)}>Add</Button>
         </div>
         {missing.length > 0 && (
-          <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-200">
+          <div className="mt-2 rounded-md border border-warn-line bg-warn-soft p-2 text-label text-warn">
             Selected tools need permissions this agent does not have:{' '}
             {missing.map((p) => (
               <button type="button" key={p} onClick={() => addPermission(p)} className="mr-1 font-mono underline">
                 + {p}
               </button>
             ))}
-            <span className="block text-amber-300/80">Without them, calls to those tools are denied at runtime.</span>
+            <span className="block text-warn">Without them, calls to those tools are denied at runtime.</span>
           </div>
         )}
       </div>

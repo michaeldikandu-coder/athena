@@ -122,7 +122,7 @@ export default function AgentDetailPage() {
         </Card>
       ) : (
         <div className="space-y-6">
-          {saved && <p className="text-sm text-emerald-300">Saved.</p>}
+          {saved && <p className="text-[15px] text-ok">Saved.</p>}
           <Card title="Run a task">
             <form onSubmit={run} className="flex gap-2">
               <input
@@ -147,7 +147,7 @@ export default function AgentDetailPage() {
 
           <div className="grid gap-6 lg:grid-cols-2">
             <Card title="Configuration">
-              <dl className="space-y-3 text-sm">
+              <dl className="space-y-3 text-[15px]">
                 <div>
                   <dt className="label">Model</dt>
                   <dd>{agent.modelConfig.provider} · <span className="font-mono">{agent.modelConfig.model}</span> · max {agent.maxIterations} iterations</dd>
@@ -156,7 +156,7 @@ export default function AgentDetailPage() {
                   <dt className="label">Tools ({agent.tools.length})</dt>
                   <dd className="flex flex-wrap gap-1">
                     {agent.tools.map((t) => (
-                      <span key={t} className="rounded bg-ink-800 px-1.5 py-0.5 font-mono text-[11px] text-ink-300">{t}</span>
+                      <span key={t} className="rounded bg-surface px-1.5 py-0.5 font-mono text-[11px] text-ink-soft">{t}</span>
                     ))}
                   </dd>
                 </div>
@@ -164,13 +164,13 @@ export default function AgentDetailPage() {
                   <dt className="label">Permissions</dt>
                   <dd className="flex flex-wrap gap-1">
                     {agent.permissions.map((p) => (
-                      <span key={p} className="rounded bg-ink-800 px-1.5 py-0.5 font-mono text-[11px] text-ink-300">{p}</span>
+                      <span key={p} className="rounded bg-surface px-1.5 py-0.5 font-mono text-[11px] text-ink-soft">{p}</span>
                     ))}
                   </dd>
                 </div>
                 <div>
                   <dt className="label">System prompt</dt>
-                  <dd className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-ink-950 p-3 font-mono text-xs text-ink-300">{agent.systemPrompt}</dd>
+                  <dd className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-bg p-3 font-mono text-label text-ink-soft">{agent.systemPrompt}</dd>
                 </div>
               </dl>
             </Card>
@@ -184,9 +184,9 @@ export default function AgentDetailPage() {
               ) : (
                 <ul className="max-h-96 space-y-2 overflow-auto">
                   {agent.memories.map((m) => (
-                    <li key={m.id} className="rounded-md bg-ink-950 p-2 text-sm">
-                      <div className="mb-0.5 text-[11px] uppercase tracking-wide text-ink-400">{m.type} · {timeAgo(m.createdAt)}</div>
-                      <p className="text-ink-300">{m.content}</p>
+                    <li key={m.id} className="rounded-md bg-bg p-2 text-[15px]">
+                      <div className="mb-0.5 text-[11px] text-muted">{m.type} · {timeAgo(m.createdAt)}</div>
+                      <p className="text-ink-soft">{m.content}</p>
                     </li>
                   ))}
                 </ul>

@@ -29,16 +29,17 @@ export default function ToolsPage() {
   return (
     <div>
       <PageHeader
-        title="Tool Registry"
-        description="All tools registered with the runtime. Each tool declares an input schema, a risk level, and the permissions an agent needs to call it."
+        eyebrow="Build"
+        title="Tool registry for every agent"
+        description="Each tool declares its input schema, its risk level, and the permissions an agent needs. High-risk tools always wait for approval."
       />
       <ErrorBanner message={error} />
-      <input className="input mb-4 max-w-sm" placeholder="Filter tools or applications" value={filter} onChange={(e) => setFilter(e.target.value)} />
-      <Card>
-        <table className="w-full">
+      <input aria-label="Filter tools" className="input mb-5 max-w-sm" placeholder="Filter tools or applications" value={filter} onChange={(e) => setFilter(e.target.value)} />
+      <Card flush>
+        <div className="overflow-x-auto"><table className="w-full min-w-[760px]">
           <thead>
             <tr>
-              <th className="table-head">Tool</th>
+              <th className="table-head pl-5">Tool</th>
               <th className="table-head">Risk</th>
               <th className="table-head">Permissions</th>
               <th className="table-head">Used by</th>
@@ -47,10 +48,10 @@ export default function ToolsPage() {
           <tbody>
             {shown.map((t) => (
               <Fragment key={t.id}>
-                <tr className="cursor-pointer hover:bg-ink-850" onClick={() => setOpen(open === t.id ? null : t.id)}>
-                  <td className="table-cell">
-                    <div className="font-mono text-sm text-ink-100">{t.id}</div>
-                    <div className="text-xs text-ink-400">{t.description}</div>
+                <tr className="cursor-pointer transition-colors hover:bg-hover" onClick={() => setOpen(open === t.id ? null : t.id)}>
+                  <td className="table-cell pl-5">
+                    <div className="font-mono text-[15px] text-ink">{t.id}</div>
+                    <div className="text-label text-muted">{t.description}</div>
                   </td>
                   <td className="table-cell whitespace-nowrap">
                     <Badge tone={t.permissionLevel}>{t.permissionLevel}</Badge>
@@ -66,15 +67,15 @@ export default function ToolsPage() {
                   <td className="table-cell">
                     <div className="flex flex-wrap gap-1">
                       {t.usedBy.map((u) => (
-                        <Badge key={u} tone={t.usedBy.length > 1 ? 'accent' : 'neutral'}>{u}</Badge>
+                        <Badge key={u} tone={t.usedBy.length > 1 ? 'action' : 'neutral'}>{u}</Badge>
                       ))}
                     </div>
                   </td>
                 </tr>
                 {open === t.id && (
                   <tr>
-                    <td colSpan={4} className="table-cell bg-ink-950">
-                      <div className="label">Input schema (JSON Schema, as sent to the LLM)</div>
+                    <td colSpan={4} className="table-cell bg-bg">
+                      <div className="label">Input schema sent to the model</div>
                       <JsonBlock value={t.inputSchema} />
                     </td>
                   </tr>
@@ -82,7 +83,7 @@ export default function ToolsPage() {
               </Fragment>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </Card>
     </div>
   );

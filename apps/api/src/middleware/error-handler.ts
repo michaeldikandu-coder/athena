@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from 'express';
 import { Error as MongooseError } from 'mongoose';
+import { explainMongoError, isMongoUnavailableError } from '@athena/database';
 import { AppError, errorResponse, logger } from '@athena/shared';
 
 export function notFoundHandler(req: Request, res: Response): void {
@@ -16,6 +17,13 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
         details: err.statusCode < 500 ? details : undefined,
       })
     );
+    return;
+  }
+
+  if (isMongoUnavailableError(err) || /buffering timed out|before initial connection/i.test(String((err as Error)?.message))) {
+    const reason = explainMongoError(err);
+    logger.error('Database unavailable', { path: req.path, reason });
+    res.status(503).json(errorResponse(`Database unavailable: ${reason}`, { code: 'database_unavailable' }));
     return;
   }
 

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { LLMClient, LLMMessage, LLMRequest, LLMResponse } from './llm.types';
+import { providerError } from './provider-error';
 
 type MessageParam = Anthropic.Messages.MessageParam;
 type ContentBlockParam = Anthropic.Messages.ContentBlockParam;
@@ -95,6 +96,8 @@ export class AnthropicClient implements LLMClient {
             output_config: { effort },
           }
         : {}),
+    }).catch((error: unknown) => {
+      throw providerError('Anthropic', error);
     });
 
     let text = '';

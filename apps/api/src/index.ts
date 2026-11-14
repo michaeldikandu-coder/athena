@@ -14,17 +14,32 @@ import { logger } from '@athena/shared';
 import { createApp } from './app';
 import { attachWebSocketServer } from './websocket/server';
 
-async function main(): Promise<void> {
-  await connectDatabase(config.mongoUri);
+/**
+ * Connect to MongoDB. If it is unreachable the API still starts, so the
+ * dashboard can show why; it keeps retrying in the background.
+ */
+async function connectWithBackgroundRetry(): Promise<void> {
+  const RETRY_MS = 30000;
+  const attempt = async (): Promise<void> => {
+    try {
+      await connectDatabase(config.mongoUri);
+      const recovered = await agentRuntime.recoverInterrupted();
+      if (recovered > 0) logger.warn('Marked interrupted executions as failed', { count: recovered });
+    } catch (error) {
+      console.error(`\n${(error as Error).message}\nThe API keeps running and retries every ${RETRY_MS / 1000}s.\n`);
+      setTimeout(() => void attempt(), RETRY_MS);
+    }
+  };
+  await attempt();
+}
 
+async function main(): Promise<void> {
   // Both applications plug into the same runtime
   registerBuiltInTools();
   registerApplication(moneyGuardApp);
   registerApplication(opsGuardApp);
 
-  const recovered = await agentRuntime.recoverInterrupted();
-  if (recovered > 0) logger.warn('Marked interrupted executions as failed', { count: recovered });
-
+  await connectWithBackgroundRetry();
   workflowEngine.start();
   const approvalCleanup = setInterval(() => {
     void approvalManager.cleanupExpired().catch((error) => logger.error('Approval cleanup failed', error));
@@ -54,6 +69,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  logger.error('Failed to start API', error as Error);
+  // Print the reason on its own line so it is not lost in a stack trace
+  console.error(`\nAthena API did not start: ${(error as Error).message}\n`);
   process.exit(1);
 });

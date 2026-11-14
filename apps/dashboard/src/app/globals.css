@@ -1,30 +1,170 @@
+/*
+  Athena console. Design system from the tasteskill deal:
+  kind software (fintech + operations console)
+  deal: palette cool-white-slate (off-white ground and teal accent: a calm, exact
+        ledger look for money and incident work, where colour is reserved for state),
+        type geist (Geist + Geist Mono), radius sharp (fintech and developer tools),
+        buttons solid, nav-cards, mark dots, rhythm space
+  The interface stays 90-95% neutral; teal marks the one action and live state.
+*/
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
+  --bg: #f7f9fa;
+  --surface: #ecf0f2;
+  --card: #ffffff;
+  --ink: #1f3038;
+  --ink-soft: color-mix(in oklab, #1f3038 84%, #ffffff);
+  --muted: #5d6b72;
+  --line: color-mix(in oklab, #1f3038 11%, transparent);
+  --line-strong: color-mix(in oklab, #1f3038 20%, transparent);
+  --hover: color-mix(in oklab, #1f3038 4%, #ffffff);
+
+  --action: #0d7480;
+  --action-ink: #ffffff;
+  --action-soft: color-mix(in oklab, #0d7480 9%, #ffffff);
+  --action-line: color-mix(in oklab, #0d7480 32%, transparent);
+
+  /* state colours, each 4.5:1 or more on white */
+  --ok: #1b7a4b;
+  --ok-soft: color-mix(in oklab, #1b7a4b 9%, #ffffff);
+  --ok-line: color-mix(in oklab, #1b7a4b 30%, transparent);
+  --warn: #935a00;
+  --warn-soft: color-mix(in oklab, #c27a00 11%, #ffffff);
+  --warn-line: color-mix(in oklab, #c27a00 38%, transparent);
+  --bad: #b3261e;
+  --bad-soft: color-mix(in oklab, #b3261e 8%, #ffffff);
+  --bad-line: color-mix(in oklab, #b3261e 30%, transparent);
+
+  --inv-bg: #1f3038;
+  --inv-surface: #2c3c44;
+  --inv-ink: #f7f9fa;
+  --inv-muted: #9ea7ab;
+
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --nav: 64px;
+  --ease: cubic-bezier(.2, .8, .2, 1);
 }
 
+html { -webkit-text-size-adjust: 100%; }
 body {
-  @apply bg-ink-950 text-ink-100 antialiased;
+  @apply bg-bg text-ink antialiased;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+  text-rendering: optimizeLegibility;
 }
-
-::selection {
-  @apply bg-accent-600/40;
-}
+h1, h2, h3 { letter-spacing: -0.035em; font-weight: 500; text-wrap: balance; }
+p { text-wrap: pretty; }
+::selection { background: var(--action-soft); }
+:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; border-radius: 2px; }
+.tabular { font-variant-numeric: tabular-nums; }
 
 @layer components {
+  .wrap { @apply mx-auto w-full max-w-[1440px] px-6 md:px-12 xl:px-20; }
+
   .input {
-    @apply w-full rounded-md border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-400 focus:border-accent-500 focus:outline-none focus:ring-1 focus:ring-accent-500 disabled:opacity-50;
+    @apply w-full rounded-sm border border-line-strong bg-card px-3 text-[15px] text-ink placeholder:text-muted disabled:opacity-50;
+    height: 44px;
+    transition: border-color 140ms var(--ease), box-shadow 140ms var(--ease);
   }
-  .label {
-    @apply mb-1 block text-xs font-medium uppercase tracking-wide text-ink-400;
+  textarea.input { height: auto; padding-top: 10px; padding-bottom: 10px; line-height: 1.5; }
+  .input:focus { outline: none; border-color: var(--action); box-shadow: 0 0 0 3px var(--action-soft); }
+
+  /* labels: 13px at 500, sentence case, never tracked capitals */
+  .label { @apply mb-1.5 block text-label font-medium text-muted; }
+
+  .table-head { @apply border-b border-line px-3 py-2.5 text-left text-label font-medium text-muted; }
+  .table-cell { @apply border-b border-line px-3 py-3 align-top text-[15px]; }
+  tr:last-child > .table-cell { border-bottom: 0; }
+
+  /* buttons (one pair, solid look): hover steps 1px up, press sinks 1px and scales .985 */
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-sm border font-medium;
+    transition: background-color 150ms var(--ease), border-color 150ms var(--ease), color 150ms var(--ease), transform 150ms var(--ease);
   }
-  .table-head {
-    @apply border-b border-ink-700 px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-400;
+  .btn:disabled { @apply cursor-not-allowed opacity-50; }
+  .btn-md { height: 44px; padding: 0 20px; font-size: 15px; }
+  .btn-sm { height: 34px; padding: 0 12px; font-size: 14px; }
+  .btn-primary { background: var(--action); border-color: var(--action); color: var(--action-ink); }
+  .btn-primary:not(:disabled):hover { background: color-mix(in oklab, var(--action) 86%, var(--ink)); border-color: color-mix(in oklab, var(--action) 86%, var(--ink)); }
+  .btn-secondary { background: var(--card); border-color: var(--line-strong); color: var(--ink); }
+  .btn-secondary:not(:disabled):hover { background: var(--hover); border-color: color-mix(in oklab, var(--ink) 35%, transparent); }
+  .btn-danger { background: var(--card); border-color: var(--bad-line); color: var(--bad); }
+  .btn-danger:not(:disabled):hover { background: var(--bad-soft); border-color: var(--bad); }
+  .btn-ghost { background: transparent; border-color: transparent; color: var(--ink-soft); }
+  .btn-ghost:not(:disabled):hover { background: var(--hover); color: var(--ink); }
+  @media (hover: hover) and (pointer: fine) {
+    .btn:not(:disabled):hover { transform: translateY(-1px); }
   }
-  .table-cell {
-    @apply border-b border-ink-800 px-3 py-2 align-top text-sm;
+  .btn:not(:disabled):active { transform: translateY(1px) scale(.985); transition-duration: 90ms; }
+  .btn .arrow { transition: transform 150ms var(--ease); }
+  .btn:not(:disabled):hover .arrow { transform: translateX(3px); }
+
+  /* text links: a faint hairline at rest, an ink line draws left to right on hover */
+  .link {
+    color: var(--action);
+    background-image: linear-gradient(currentColor, currentColor), linear-gradient(var(--action-line), var(--action-line));
+    background-size: 0% 1px, 100% 1px;
+    background-position: 0 100%, 0 100%;
+    background-repeat: no-repeat;
+    padding-bottom: 1px;
+    transition: background-size 150ms var(--ease);
   }
+  .link:hover { background-size: 100% 1px, 100% 1px; }
+
+  /* cards: one recipe. A linked card lifts 2px, its border darkens a step */
+  .card { @apply rounded-lg border border-line bg-card; }
+  .card-link {
+    @apply rounded-lg border border-line bg-card;
+    transition: transform 180ms var(--ease), border-color 180ms var(--ease), box-shadow 180ms var(--ease);
+  }
+  .card-link:hover { transform: translateY(-2px); border-color: var(--line-strong); box-shadow: 0 8px 24px -12px color-mix(in oklab, var(--ink) 18%, transparent); }
+
+  .mono { font-family: var(--font-geist-mono), ui-monospace, monospace; }
+}
+
+/* the dealt mark: dots */
+.mark-dots {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  background: var(--action);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='6.5' cy='6.5' r='4.5'/%3E%3Ccircle cx='17.5' cy='6.5' r='4.5'/%3E%3Ccircle cx='6.5' cy='17.5' r='4.5'/%3E%3Crect x='13' y='13' width='9' height='9' rx='1.5'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='6.5' cy='6.5' r='4.5'/%3E%3Ccircle cx='17.5' cy='6.5' r='4.5'/%3E%3Ccircle cx='6.5' cy='17.5' r='4.5'/%3E%3Crect x='13' y='13' width='9' height='9' rx='1.5'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* nav words: rest bare, darken, draw a 1px line 4px under the word; current page: a 2px bar */
+.nav-word { position: relative; }
+.nav-word::after {
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: 4px; height: 1px; background: currentColor;
+  transform: scaleX(0); transform-origin: right; transition: transform 150ms var(--ease);
+}
+.nav-word:hover::after { transform: scaleX(1); transform-origin: left; }
+.nav-word[aria-current="page"]::after { height: 2px; bottom: 0; transform: scaleX(1); background: var(--ink); }
+
+/* the Build panel opens with a 6px drop */
+.nav-panel { animation: panel-in 200ms var(--ease); }
+@keyframes panel-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+/* runtime diagram: pulses run along the lines */
+.pulse-line { stroke-dasharray: 4 10; animation: pulse-run 3.2s linear infinite; }
+@keyframes pulse-run { to { stroke-dashoffset: -112; } }
+.live-dot { animation: live 2.4s ease-in-out infinite; }
+@keyframes live { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+/* the page enters once: heading rises out of its mask, the rest fades up 12px */
+.enter-rise { animation: rise 700ms cubic-bezier(.22, 1, .36, 1) both; }
+.enter-fade { animation: fade-up 520ms cubic-bezier(.22, 1, .36, 1) 180ms both; }
+@keyframes rise { from { transform: translateY(105%); } to { transform: none; } }
+@keyframes fade-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .btn:hover, .btn:active, .card-link:hover { transform: none !important; }
 }

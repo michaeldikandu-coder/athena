@@ -51,12 +51,12 @@ function ExecutionsList() {
 
   return (
     <div>
-      <PageHeader title="Executions" description="Every agent run and workflow run, across all applications." />
+      <PageHeader title="Runs across both agents" description="Every agent task and workflow run, newest first. Open one to see each tool call and decision." />
       <ErrorBanner message={error} />
       <div className="mb-4 flex flex-wrap gap-2">
         <select className="input w-48" value={status} onChange={(e) => setParam('status', e.target.value)}>
           {STATUSES.map((s) => (
-            <option key={s} value={s}>{s ? s.replace('_', ' ') : 'All statuses'}</option>
+            <option key={s} value={s}>{s ? ({ running: 'Running', waiting_approval: 'Needs approval', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled' } as Record<string, string>)[s] : 'All statuses'}</option>
           ))}
         </select>
         <select className="input w-48" value={application} onChange={(e) => setParam('application', e.target.value)}>
@@ -65,11 +65,11 @@ function ExecutionsList() {
           <option value="opsguard">OpsGuard</option>
         </select>
       </div>
-      <Card>
-        {!items ? <LoadingBlock /> : <ExecutionTable executions={items} />}
+      <Card flush>
+        {!items ? <div className="px-5"><LoadingBlock /></div> : <ExecutionTable executions={items} />}
         {meta && meta.totalPages > 1 && (
-          <div className="mt-4 flex items-center justify-between text-sm text-ink-400">
-            <span>{meta.total} executions</span>
+          <div className="flex items-center justify-between border-t border-line px-5 py-3 text-[14px] text-muted">
+            <span className="tabular">{meta.total} runs</span>
             <div className="flex gap-2">
               <Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => setParam('page', String(page - 1))}>Previous</Button>
               <span className="px-2 py-1">Page {page} of {meta.totalPages}</span>
