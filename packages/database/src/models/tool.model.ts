@@ -1,4 +1,5 @@
-import { model, Model } from 'mongoose';
+import { Model } from 'mongoose';
+import { defineModel } from './define-model';
 import { ITool, ToolSchema } from '../schemas/tool.schema';
 
-export const ToolModel: Model<ITool> = model<ITool>('Tool', ToolSchema);
+export const ToolModel: Model<ITool> = defineModel<ITool>('Tool', ToolSchema);

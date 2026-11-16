@@ -1,4 +1,5 @@
-import { model, Model } from 'mongoose';
+import { Model } from 'mongoose';
+import { defineModel } from './define-model';
 import { IApproval, ApprovalSchema } from '../schemas/approval.schema';
 
-export const ApprovalModel: Model<IApproval> = model<IApproval>('Approval', ApprovalSchema);
+export const ApprovalModel: Model<IApproval> = defineModel<IApproval>('Approval', ApprovalSchema);

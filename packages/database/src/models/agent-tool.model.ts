@@ -1,4 +1,5 @@
-import { model, Model } from 'mongoose';
+import { Model } from 'mongoose';
+import { defineModel } from './define-model';
 import { IAgentTool, AgentToolSchema } from '../schemas/agent-tool.schema';
 
-export const AgentToolModel: Model<IAgentTool> = model<IAgentTool>('AgentTool', AgentToolSchema);
+export const AgentToolModel: Model<IAgentTool> = defineModel<IAgentTool>('AgentTool', AgentToolSchema);
