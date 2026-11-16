@@ -156,3 +156,17 @@ Built for the Kiroween hackathon (Skeleton Crew category). Constraints: the prod
 1. THE dashboard SHALL serve the API from the same Next.js app, so the UI and API share one origin and one Vercel project.
 2. THE maintenance tick (scheduled workflows, expired approvals, stalled runs) SHALL run from a cron endpoint protected by `CRON_SECRET`, and at most once a minute while the dashboard is open.
 3. THE API SHALL also run as a standalone long-lived Node server with a one-minute maintenance timer.
+
+### Requirement 12: Easy to start, open to extend
+
+**User Story:** As a new user, I want to get a first result without learning the whole system, and later connect my own APIs, so that Athena grows with what I need.
+
+#### Acceptance Criteria
+
+1. THE overview SHALL show a getting-started checklist (connect an account, install an agent, run an investigation, make your own agent) that ticks off from real data and can be hidden.
+2. THE agent builder SHALL offer ready-made templates that fill every field, and SHALL offer to create the template's workflow.
+3. WHEN a user ticks or unticks a tool THE agent builder SHALL add or remove the permissions that tool needs.
+4. THE workflow builder SHALL offer a form with a trigger list, a task and an "ask me first" option, and keep the JSON editor as an advanced option.
+5. THE system SHALL let a user define HTTP tools (method, URL with placeholders, inputs, headers, one encrypted secret header) that only that user's agents can use.
+6. WHILE running in production custom tools SHALL refuse private addresses, never follow redirects, time out after 15 seconds and read at most 1 MB.
+7. THE system SHALL require `write:http` and, by default, approval for custom tools that use POST, PUT, PATCH or DELETE.

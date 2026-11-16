@@ -1,5 +1,6 @@
 import { connectDatabase, getDatabaseStatus } from '@athena/database';
-import { registerApplication, registerBuiltInTools } from '@athena/core';
+import { registerApplication, registerBuiltInTools, setCustomToolLoader } from '@athena/core';
+import { loadCustomTools } from '@athena/integrations';
 import { moneyGuardApp } from '@athena/moneyguard';
 import { opsGuardApp } from '@athena/opsguard';
 import { logger } from '@athena/shared';
@@ -19,6 +20,8 @@ export function registerApplications(): void {
   registerBuiltInTools();
   registerApplication(moneyGuardApp);
   registerApplication(opsGuardApp);
+  // Users' own HTTP tools are read from the database when an agent loads
+  setCustomToolLoader((userId, toolIds) => loadCustomTools(userId, toolIds));
   registered = true;
 }
 

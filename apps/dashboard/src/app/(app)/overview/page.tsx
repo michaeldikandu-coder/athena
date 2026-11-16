@@ -7,6 +7,7 @@ import { useRealtime } from '@/lib/realtime';
 import { ApprovalCard } from '@/components/approval-card';
 import { ExecutionTable } from '@/components/execution-table';
 import { RuntimeDiagram } from '@/components/runtime-diagram';
+import { GettingStarted } from '@/components/getting-started';
 import { Arrow, ButtonLink, Card, ErrorBanner, LoadingBlock, PageHeader, TextLink } from '@/components/ui';
 
 function Figure({ label, value, tone }: { label: string; value: number; tone?: 'warn' | 'bad' | 'ok' }) {
@@ -79,6 +80,8 @@ export default function OverviewPage() {
         }
       />
       <ErrorBanner message={error} />
+
+      {stats && apps.length > 0 && <GettingStarted apps={apps} totalRuns={total} />}
 
       {stats && (
         <div className="card mb-8 grid grid-cols-2 divide-x divide-y divide-line md:grid-cols-5 md:divide-y-0">

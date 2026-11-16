@@ -50,3 +50,13 @@ export {
   verifyGithubAccess,
 } from './connectors/github';
 export { postSlackMessage, postSlackMessageTo, isSlackWebhookUrl, sendNotificationTool } from './connectors/slack';
+// Outbound requests to user-supplied URLs
+export {
+  assertPublicUrl,
+  guardedAgents,
+  isPrivateAddress,
+  privateUrlsAllowed,
+  BlockedAddressError,
+} from './net/safe-http';
+// User-defined HTTP tools
+export { buildCustomTool, customToolId, loadCustomTools, sendCustomRequest, CUSTOM_TOOL_PREFIX } from './custom-tools/custom-tool';

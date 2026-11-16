@@ -89,10 +89,18 @@
   - [x] 13.3 Browser checks of pages, navigation and responsive layout
   - _Requirements: 1–11_
 
-- [ ] 14. Deploy and submit
-  - [ ] 14.1 Allow `0.0.0.0/0` in the MongoDB Atlas IP access list
-  - [ ] 14.2 Create the Vercel project (root `apps/dashboard`) with production secrets
-  - [ ] 14.3 Connect Bachs, GitHub and Slack in the deployed app and register their webhooks
-  - [ ] 14.4 Set up a cron for `/api/internal/cron/tick`
-  - [ ] 14.5 Run the demo end to end with real credentials, record the video, submit
+- [x] 14. Make Athena easier to use and extend
+  - [x] 14.1 Getting-started checklist on the overview, ticked off from real data
+  - [x] 14.2 Agent templates (Refund Reviewer, Dispute Responder, Daily Ops Digest, Deploy Guard, Uptime Alert Handler) that can also create their workflow
+  - [x] 14.3 Permissions set from the chosen tools; model, iterations, memory and extra permissions under Advanced
+  - [x] 14.4 Simple workflow form (when / what / ask me first) next to the JSON editor
+  - [x] 14.5 Custom HTTP tools: per-user, encrypted secret header, test request, private-address guard, approval by default for changes
+  - _Requirements: 10, 12_
+
+- [ ] 15. Deploy and submit
+  - [ ] 15.1 Allow `0.0.0.0/0` in the MongoDB Atlas IP access list
+  - [ ] 15.2 Create the Vercel project (root `apps/dashboard`) with production secrets
+  - [ ] 15.3 Connect Bachs, GitHub and Slack in the deployed app and register their webhooks
+  - [ ] 15.4 Set up a cron for `/api/internal/cron/tick`
+  - [ ] 15.5 Run the demo end to end with real credentials, record the video, submit
   - _Requirements: 11_

@@ -3,6 +3,7 @@ export * from './types';
 
 // Tools
 export { ToolRegistry, toolRegistry } from './tools/tool-registry';
+export { setCustomToolLoader, loadUserTools, CUSTOM_TOOL_ID_PREFIX } from './tools/custom-tool-loader';
 
 // Permissions
 export * from './permissions';

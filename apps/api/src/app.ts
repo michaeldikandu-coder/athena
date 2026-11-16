@@ -20,6 +20,7 @@ import eventRoutes from './routes/events.routes';
 import connectionRoutes from './routes/connections.routes';
 import realtimeRoutes from './routes/realtime.routes';
 import internalRoutes from './routes/internal.routes';
+import customToolRoutes from './routes/custom-tools.routes';
 import { withConnections } from './middleware/user-scope';
 
 export function createApp(): Express {
@@ -81,6 +82,7 @@ export function createApp(): Express {
   app.use('/api/workflows', requireAuth, workflowRoutes);
   app.use('/api/apps', requireAuth, withConnections, appRoutes);
   app.use('/api/connections', requireAuth, connectionRoutes);
+  app.use('/api/custom-tools', requireAuth, customToolRoutes);
   app.use('/api/events', requireAuth, eventRoutes);
   app.use('/api/realtime', requireAuth, realtimeRoutes);
 

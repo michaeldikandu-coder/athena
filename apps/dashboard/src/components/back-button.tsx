@@ -52,6 +52,7 @@ const LABELS: Array<[RegExp, string]> = [
   [/^\/workflows\/new$/, 'new workflow'],
   [/^\/workflows\/[^/]+$/, 'workflow'],
   [/^\/tools$/, 'Tool registry'],
+  [/^\/custom-tools$/, 'Custom tools'],
   [/^\/settings\/connections$/, 'Connections'],
 ];
 

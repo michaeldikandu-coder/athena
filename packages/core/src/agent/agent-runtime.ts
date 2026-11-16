@@ -13,6 +13,7 @@ import {
   truncate,
 } from '@athena/shared';
 import { toolRegistry } from '../tools/tool-registry';
+import { CUSTOM_TOOL_ID_PREFIX, loadUserTools } from '../tools/custom-tool-loader';
 import { permissionManager } from '../permissions/permission-manager';
 import { approvalManager } from '../approvals/approval-manager';
 import { executionMonitor } from '../monitor/execution-monitor';
@@ -152,10 +153,15 @@ export class AgentRuntime {
       AgentToolModel.find({ agentId, enabled: true }).lean(),
       ConnectionModel.distinct('provider', { userId }) as Promise<ConnectionProvider[]>,
     ]);
+    // The owner's custom tools are loaded fresh, so edits and deletions apply to the next run
+    const linkedIds = links.map((l) => l.toolId);
+    const custom = await loadUserTools(userId, linkedIds);
+    custom.forEach((tool) => toolRegistry.register(tool, { override: true }));
+    const ownCustom = new Set(custom.map((t) => t.id));
+
     const unavailableTools: LoadedAgent['unavailableTools'] = [];
-    const assigned = links
-      .map((l) => l.toolId)
-      .filter((id) => toolRegistry.has(id))
+    const assigned = linkedIds
+      .filter((id) => toolRegistry.has(id) && (!id.startsWith(CUSTOM_TOOL_ID_PREFIX) || ownCustom.has(id)))
       .filter((id) => {
         const missing = (toolRegistry.get(id).connections ?? []).filter((p) => !connected.includes(p));
         if (missing.length) unavailableTools.push({ id, missing });

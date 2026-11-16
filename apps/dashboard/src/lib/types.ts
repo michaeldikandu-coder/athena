@@ -42,6 +42,7 @@ export interface ToolDescriptor {
   requiredPermissions: string[];
   requiresApproval: boolean;
   category?: string;
+  connections?: ConnectionProvider[];
   usedBy: string[];
 }
 

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { AgentModel, AgentToolModel, ConnectionModel, ExecutionModel, WorkflowModel, MemoryModel } from '@athena/database';
-import { agentRuntime, defaultModel, toolRegistry } from '@athena/core';
+import { AgentModel, AgentToolModel, ConnectionModel, CustomToolModel, ExecutionModel, WorkflowModel, MemoryModel } from '@athena/database';
+import { CUSTOM_TOOL_ID_PREFIX, agentRuntime, defaultModel, toolRegistry } from '@athena/core';
 import { AgentNotFoundError, CONNECTION_LABELS, ConnectionProvider, ValidationError, successResponse } from '@athena/shared';
 import { asyncHandler, idParams, validate } from '../middleware/validate';
 import { serializeAgent } from '../services/serializers';
@@ -38,8 +38,15 @@ const runBody = z.object({
   context: z.record(z.unknown()).optional(),
 });
 
-function assertToolsExist(tools: string[]): void {
-  const unknown = tools.filter((id) => !toolRegistry.has(id));
+/** Built-in tools, or custom tools owned by this user */
+async function assertToolsExist(tools: string[], userId: string): Promise<void> {
+  const customIds = tools.filter((id) => id.startsWith(CUSTOM_TOOL_ID_PREFIX));
+  const owned = new Set(
+    (await CustomToolModel.find({ userId, toolId: { $in: customIds } }).select('toolId').lean()).map((d) => d.toolId)
+  );
+  const unknown = tools.filter((id) =>
+    id.startsWith(CUSTOM_TOOL_ID_PREFIX) ? !owned.has(id) : !toolRegistry.has(id)
+  );
   if (unknown.length) throw new ValidationError(`Unknown tools: ${unknown.join(', ')}`);
 }
 
@@ -83,7 +90,7 @@ router.post(
   validate({ body: agentBody }),
   asyncHandler(async (req, res) => {
     const body = req.body as z.infer<typeof agentBody>;
-    assertToolsExist(body.tools);
+    await assertToolsExist(body.tools, req.user!.id);
     const agent = await AgentModel.create({
       name: body.name,
       description: body.description,
@@ -147,7 +154,7 @@ router.put(
   asyncHandler(async (req, res) => {
     await findOwnedAgent(req.params.id, req.user!.id);
     const { tools, modelConfig: mc, ...rest } = req.body as z.infer<typeof updateBody>;
-    if (tools) assertToolsExist(tools);
+    if (tools) await assertToolsExist(tools, req.user!.id);
 
     const update: Record<string, unknown> = { ...rest };
     if (mc) {
