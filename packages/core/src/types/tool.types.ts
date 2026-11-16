@@ -1,5 +1,5 @@
 import { ZodSchema } from 'zod';
-import { PermissionLevel, ToolContext, ToolResult } from '@athena/shared';
+import { ConnectionProvider, PermissionLevel, ToolContext, ToolResult } from '@athena/shared';
 
 /**
  * Tool handler function signature
@@ -25,6 +25,8 @@ export interface Tool<TInput = any, TOutput = any> {
   /** Force a human approval before execution. High permission level always requires approval. */
   requiresApproval: boolean;
   category?: string;
+  /** Services the user must connect (Build > Connections) for this tool to be offered */
+  connections?: ConnectionProvider[];
   handler: ToolHandler<TInput, TOutput>;
   metadata?: Record<string, any>;
 }
@@ -64,4 +66,5 @@ export interface ToolDescriptor {
   requiredPermissions: string[];
   requiresApproval: boolean;
   category?: string;
+  connections?: ConnectionProvider[];
 }

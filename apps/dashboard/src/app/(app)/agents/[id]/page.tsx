@@ -7,7 +7,7 @@ import type { AgentDetail, Execution } from '@/lib/types';
 import { timeAgo } from '@/lib/format';
 import { AgentForm, agentToForm, formToBody } from '@/components/agent-form';
 import { ExecutionTable } from '@/components/execution-table';
-import { AppBadge, Button, Card, EmptyState, ErrorBanner, LoadingBlock, PageHeader, StatusBadge } from '@/components/ui';
+import { AppBadge, Button, ButtonLink, Card, EmptyState, ErrorBanner, LoadingBlock, PageHeader, StatusBadge } from '@/components/ui';
 
 export default function AgentDetailPage() {
   const { id } = useParams<{ id: string }>()!;
@@ -123,6 +123,15 @@ export default function AgentDetailPage() {
       ) : (
         <div className="space-y-6">
           {saved && <p className="text-[15px] text-ok">Saved.</p>}
+          {agent.missingConnections.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-warn-line bg-warn-soft px-4 py-3 text-[15px] text-warn">
+              <span>
+                Connect {agent.missingConnections.map((c) => c.label).join(' and ')} first. Until then this agent runs without{' '}
+                <span className="mono text-[13px]">{agent.missingConnections.flatMap((c) => c.tools).join(', ')}</span>.
+              </span>
+              <ButtonLink size="sm" href={`/settings/connections#${agent.missingConnections[0].provider}`}>Open connections</ButtonLink>
+            </div>
+          )}
           <Card title="Run a task">
             <form onSubmit={run} className="flex gap-2">
               <input

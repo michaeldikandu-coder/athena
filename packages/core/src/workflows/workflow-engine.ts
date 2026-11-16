@@ -219,6 +219,7 @@ export class WorkflowEngine {
   ): Promise<{ executionId: string }> {
     await agentRuntime.assertCapacity(workflow.userId);
     const agent = await agentRuntime.loadAgent(workflow.agentId, workflow.userId);
+    agentRuntime.assertRunnable(agent);
     const state: RunState = {
       version: 1,
       kind: 'workflow',

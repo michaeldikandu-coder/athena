@@ -168,6 +168,7 @@ export class ToolRegistry {
       requiredPermissions: tool.requiredPermissions,
       requiresApproval: this.requiresApproval(tool.id),
       category: tool.category,
+      connections: tool.connections ?? [],
     };
   }
 

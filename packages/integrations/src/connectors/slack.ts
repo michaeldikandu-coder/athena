@@ -57,6 +57,7 @@ const SEVERITY_EMOJI = { info: ':information_source:', warning: ':warning:', cri
  */
 export const sendNotificationTool: Tool<z.infer<typeof sendNotificationInput>> = {
   id: 'send_notification',
+  connections: ['slack'],
   name: 'Send Team Notification',
   description:
     'Send a notification to the team Slack channel. Use for findings that need human attention.',

@@ -28,6 +28,7 @@ export interface Agent {
 }
 
 export interface AgentDetail extends Agent {
+  missingConnections: Array<{ provider: ConnectionProvider; label: string; tools: string[] }>;
   stats: { executions: number };
   memories: Array<{ id: string; type: string; content: string; createdAt: string }>;
 }

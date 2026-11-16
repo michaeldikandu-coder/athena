@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { AgentModel, AgentToolModel, ExecutionModel, WorkflowModel, MemoryModel } from '@athena/database';
+import { AgentModel, AgentToolModel, ConnectionModel, ExecutionModel, WorkflowModel, MemoryModel } from '@athena/database';
 import { agentRuntime, defaultModel, toolRegistry } from '@athena/core';
-import { AgentNotFoundError, ValidationError, successResponse } from '@athena/shared';
+import { AgentNotFoundError, CONNECTION_LABELS, ConnectionProvider, ValidationError, successResponse } from '@athena/shared';
 import { asyncHandler, idParams, validate } from '../middleware/validate';
 import { serializeAgent } from '../services/serializers';
 
@@ -105,16 +105,30 @@ router.get(
   asyncHandler(async (req, res) => {
     const agent = await findOwnedAgent(req.params.id, req.user!.id);
     const tools = await toolsFor([req.params.id]);
-    const [executions, memories] = await Promise.all([
+    const [executions, memories, connected] = await Promise.all([
       ExecutionModel.countDocuments({ agentId: req.params.id }),
       MemoryModel.find({ agentId: req.params.id, type: { $in: ['fact', 'decision'] } })
         .sort({ createdAt: -1 })
         .limit(20)
         .lean(),
+      ConnectionModel.distinct('provider', { userId: req.user!.id }) as Promise<ConnectionProvider[]>,
     ]);
+    // Services this agent's tools need that the user has not connected yet
+    const missing = new Map<ConnectionProvider, string[]>();
+    for (const toolId of tools.get(req.params.id) ?? []) {
+      if (!toolRegistry.has(toolId)) continue;
+      for (const provider of toolRegistry.get(toolId).connections ?? []) {
+        if (!connected.includes(provider)) missing.set(provider, [...(missing.get(provider) ?? []), toolId]);
+      }
+    }
     res.json(
       successResponse({
         ...serializeAgent(agent, tools.get(req.params.id)),
+        missingConnections: Array.from(missing, ([provider, toolIds]) => ({
+          provider,
+          label: CONNECTION_LABELS[provider],
+          tools: toolIds,
+        })),
         stats: { executions },
         memories: memories.map((m) => ({
           id: String(m._id),

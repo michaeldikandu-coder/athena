@@ -131,6 +131,9 @@ router.post(
   validate({ body: investigateChargeBody }),
   asyncHandler(async (req, res) => {
     const { chargeId, note } = req.body as z.infer<typeof investigateChargeBody>;
+    if (!isBachsConfigured()) {
+      throw new AppError('Connect Bachs in Build > Connections before investigating payments.', { statusCode: 409 });
+    }
     const agentId = await requireInstalledAgentId('moneyguard', req.user!.id);
     const result = await agentRuntime.start({
       agentId,

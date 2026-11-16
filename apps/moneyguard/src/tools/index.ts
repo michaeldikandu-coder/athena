@@ -35,6 +35,7 @@ const decimal = z
 const getPaymentInput = z.object({ chargeId });
 export const getTransactionDetailsTool: Tool<z.infer<typeof getPaymentInput>> = {
   id: 'get_transaction_details',
+  connections: ['bachs'],
   name: 'Get Payment Details',
   description:
     'Fetch a Bachs payment by charge id: amount and currency (decimal strings), status, status history with failure reasons, payment method, payer details (card or bank-transfer sender), customer name/email, fees, refunds.',
@@ -64,6 +65,7 @@ function summarizeCustomer(c: BachsCustomer) {
 }
 export const getCustomerProfileTool: Tool<z.infer<typeof getCustomerInput>> = {
   id: 'get_customer_profile',
+  connections: ['bachs'],
   name: 'Get Customer Profile',
   description:
     'Look up a Bachs customer by email (as shown on the payment) or customer id: account age, billing country, metadata including any previous MoneyGuard flag.',
@@ -88,6 +90,7 @@ const historyInput = z.object({
 });
 export const searchTransactionHistoryTool: Tool<z.infer<typeof historyInput>> = {
   id: 'search_transaction_history',
+  connections: ['bachs'],
   name: 'Search Payment History',
   description:
     "List a customer's recent Bachs payments (matched by email) with counts of failed, refunded, and underpaid payments and totals per currency.",
@@ -129,6 +132,7 @@ const disputesInput = z.object({
 });
 export const getDisputesTool: Tool<z.infer<typeof disputesInput>> = {
   id: 'get_disputes',
+  connections: ['bachs'],
   name: 'Get Disputes',
   description:
     'Fetch chargeback disputes from Bachs: one by id, those on a charge, or the most recent on the account. Includes status, reason, and response deadline.',
@@ -160,6 +164,7 @@ export const getDisputesTool: Tool<z.infer<typeof disputesInput>> = {
 const riskInput = z.object({ chargeId });
 export const checkRiskRulesTool: Tool<z.infer<typeof riskInput>> = {
   id: 'check_risk_rules',
+  connections: ['bachs'],
   name: 'Check Risk Rules',
   description:
     'Evaluate the MoneyGuard risk rules against a Bachs payment: amount vs per-currency threshold, failure reasons, attempts, payer/customer name match, velocity, prior disputes and refunds, account age, previous flags. Returns score 0-100, level, evidence per triggered rule, and rules skipped for missing data.',
@@ -201,6 +206,7 @@ const flagInput = z.object({
 });
 export const flagCustomerTool: Tool<z.infer<typeof flagInput>> = {
   id: 'flag_customer',
+  connections: ['bachs'],
   name: 'Flag Customer',
   description:
     'Mark a Bachs customer as risky by writing MoneyGuard flag fields to the customer metadata, so future payments and investigations see it. Existing metadata is kept. Requires human approval.',
@@ -238,6 +244,7 @@ const refundInput = z.object({
 });
 export const refundTransactionTool: Tool<z.infer<typeof refundInput>> = {
   id: 'refund_transaction',
+  connections: ['bachs'],
   name: 'Refund Payment',
   description:
     'Refund a completed Bachs payment. Moves money back to the customer and cannot be undone once it succeeds. Bachs allows one refund per charge. Always requires human approval.',
@@ -288,7 +295,8 @@ export const refundTransactionTool: Tool<z.infer<typeof refundInput>> = {
 
 const caseInput = z.object({
   chargeId,
-  customerEmail: email.optional(),
+  // Models often send "" when they have no email; treat that as not given
+  customerEmail: z.union([email, z.literal('').transform(() => undefined)]).optional(),
   disputeId: z.string().max(100).optional(),
   title: z.string().min(5).max(150),
   summary: z.string().min(20).max(4000).describe('Findings and evidence'),

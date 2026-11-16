@@ -17,6 +17,7 @@ const repo = z
 
 export const getSystemStatusTool: Tool<Record<string, never>> = {
   id: 'get_system_status',
+  connections: ['services'],
   name: 'Get System Status',
   description:
     'Check every configured service over HTTP and report host metrics (load, memory, uptime) and database connectivity. Start incident investigations here.',
@@ -60,6 +61,7 @@ const serviceInput = z.object({
 });
 export const checkServiceHealthTool: Tool<z.infer<typeof serviceInput>> = {
   id: 'check_service_health',
+  connections: ['services'],
   name: 'Check Service Health',
   description:
     'Run repeated HTTP checks against one configured service and return status codes, latency per sample, and a response body preview.',
@@ -121,6 +123,7 @@ const runsInput = z.object({
 });
 export const listWorkflowRunsTool: Tool<z.infer<typeof runsInput>> = {
   id: 'list_workflow_runs',
+  connections: ['github'],
   name: 'List CI/CD Runs',
   description: 'List recent GitHub Actions workflow runs (deployments, builds), failed ones by default.',
   inputSchema: runsInput,
@@ -156,6 +159,7 @@ export const listWorkflowRunsTool: Tool<z.infer<typeof runsInput>> = {
 const runInput = z.object({ repo, runId: z.number().int().positive() });
 export const getWorkflowRunTool: Tool<z.infer<typeof runInput>> = {
   id: 'get_workflow_run',
+  connections: ['github'],
   name: 'Get CI/CD Run Details',
   description: 'Get the jobs and failed steps of a GitHub Actions run to find what broke.',
   inputSchema: runInput,
@@ -199,6 +203,7 @@ export const getWorkflowRunTool: Tool<z.infer<typeof runInput>> = {
 
 export const rerunFailedJobsTool: Tool<z.infer<typeof runInput>> = {
   id: 'rerun_failed_jobs',
+  connections: ['github'],
   name: 'Re-run Failed CI/CD Jobs',
   description:
     'Re-run the failed jobs of a GitHub Actions run (e.g. to retry a deployment after a transient failure). Requires human approval.',
@@ -239,6 +244,7 @@ function paymentView(p: BachsPayment) {
 
 export const getOrderDetailsTool: Tool<z.infer<typeof orderInput>> = {
   id: 'get_order_details',
+  connections: ['bachs'],
   name: 'Get Order Details',
   description:
     'Fetch an order from Bachs by checkout id or charge id: checkout status and expiry, payment status, payment method, and status history with failure reasons.',
@@ -280,6 +286,7 @@ const searchTicketsInput = z.object({
 });
 export const searchTicketsTool: Tool<z.infer<typeof searchTicketsInput>> = {
   id: 'search_tickets',
+  connections: ['github'],
   name: 'Search Open Incidents',
   description: 'List open incident tickets so you can update an existing one instead of creating duplicates.',
   inputSchema: searchTicketsInput,
@@ -320,6 +327,7 @@ const createTicketInput = z.object({
 });
 export const createTicketTool: Tool<z.infer<typeof createTicketInput>> = {
   id: 'create_ticket',
+  connections: ['github'],
   name: 'Create Incident Ticket',
   description: 'Open an incident ticket (GitHub issue labelled "incident") with your summary.',
   inputSchema: createTicketInput,
@@ -356,6 +364,7 @@ const updateIncidentInput = z.object({
 });
 export const updateIncidentTool: Tool<z.infer<typeof updateIncidentInput>> = {
   id: 'update_incident',
+  connections: ['github'],
   name: 'Update Incident',
   description: 'Add a status update to an incident ticket and optionally close it as resolved.',
   inputSchema: updateIncidentInput,

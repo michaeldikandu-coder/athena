@@ -1,7 +1,9 @@
-import { AgentModel, AgentToolModel, ApprovalModel, ExecutionModel, IAgent } from '@athena/database';
+import { AgentModel, AgentToolModel, ApprovalModel, ConnectionModel, ExecutionModel, IAgent } from '@athena/database';
 import {
   AgentNotFoundError,
   AppError,
+  CONNECTION_LABELS,
+  ConnectionProvider,
   LLMProvider,
   NotFoundError,
   RateLimitError,
@@ -37,6 +39,8 @@ export interface LoadedAgent {
   maxIterations: number;
   application?: string;
   userId: string;
+  /** Assigned tools left out of this run because the owner has not connected a service they need */
+  unavailableTools: Array<{ id: string; missing: ConnectionProvider[] }>;
 }
 
 export interface ExecutionTriggerInfo {
@@ -144,8 +148,19 @@ export class AgentRuntime {
       throw new AppError(`Agent ${agent.name} is ${agent.status}`, { statusCode: 409 });
     }
 
-    const links = await AgentToolModel.find({ agentId, enabled: true }).lean();
-    const assigned = links.map((l) => l.toolId).filter((id) => toolRegistry.has(id));
+    const [links, connected] = await Promise.all([
+      AgentToolModel.find({ agentId, enabled: true }).lean(),
+      ConnectionModel.distinct('provider', { userId }) as Promise<ConnectionProvider[]>,
+    ]);
+    const unavailableTools: LoadedAgent['unavailableTools'] = [];
+    const assigned = links
+      .map((l) => l.toolId)
+      .filter((id) => toolRegistry.has(id))
+      .filter((id) => {
+        const missing = (toolRegistry.get(id).connections ?? []).filter((p) => !connected.includes(p));
+        if (missing.length) unavailableTools.push({ id, missing });
+        return missing.length === 0;
+      });
 
     // Built-in memory tools are offered when the agent holds the needed permissions
     const builtIns = builtInTools
@@ -174,7 +189,30 @@ export class AgentRuntime {
       maxIterations: agent.maxIterations ?? 15,
       application: agent.application,
       userId: agent.userId,
+      unavailableTools,
     };
+  }
+
+  /**
+   * Services the agent's tools need that the owner has not connected, e.g. ["Bachs"]
+   */
+  missingConnections(agent: LoadedAgent): string[] {
+    const providers = new Set(agent.unavailableTools.flatMap((t) => t.missing));
+    return Array.from(providers).map((p) => CONNECTION_LABELS[p]);
+  }
+
+  /**
+   * Refuse a run that cannot do anything: every tool assigned to the agent
+   * needs a service the owner has not connected.
+   */
+  assertRunnable(agent: LoadedAgent): void {
+    const usable = agent.toolIds.filter((id) => !builtInTools.some((b) => b.id === id));
+    if (agent.unavailableTools.length > 0 && usable.length === 0) {
+      throw new AppError(
+        `${agent.name} cannot run yet: connect ${this.missingConnections(agent).join(' and ')} in Build > Connections first.`,
+        { statusCode: 409 }
+      );
+    }
   }
 
   /**
@@ -210,6 +248,7 @@ export class AgentRuntime {
   async start(input: StartExecutionInput): Promise<{ executionId: string }> {
     await this.assertCapacity(input.userId);
     const agent = await this.loadAgent(input.agentId, input.userId);
+    this.assertRunnable(agent);
     const agentState = await this.buildAgentState(agent, input.task, input.context);
     const ctx = await this.createExecution(agent, input, { version: 1, kind: 'agent', agent: agentState });
     scheduleRun(ctx.executionId);
@@ -225,7 +264,13 @@ export class AgentRuntime {
     context?: Record<string, any>
   ): Promise<AgentLoopState> {
     const memoryContext = await memoryManager.buildContext(agent.id);
-    const system = [agent.systemPrompt, PLATFORM_RULES, `Current time: ${new Date().toISOString()}`, memoryContext]
+    const missing = this.missingConnections(agent);
+    const connectionNote = missing.length
+      ? `Not connected on this account: ${missing.join(', ')}. These tools are unavailable in this run: ${agent.unavailableTools
+          .map((t) => t.id)
+          .join(', ')}. Do not try to use them; work with what you have and mention the gap in your report.`
+      : '';
+    const system = [agent.systemPrompt, PLATFORM_RULES, connectionNote, `Current time: ${new Date().toISOString()}`, memoryContext]
       .filter(Boolean)
       .join('\n\n');
     const userContent =
@@ -416,6 +461,13 @@ export class AgentRuntime {
       return { ok: false, content: JSON.stringify({ error: message, code }) };
     };
 
+    const disconnected = ctx.agent.unavailableTools.find((t) => t.id === call.name);
+    if (disconnected) {
+      return fail(
+        `Tool "${call.name}" needs ${disconnected.missing.map((p) => CONNECTION_LABELS[p]).join(' and ')}, which this account has not connected`,
+        'connection_missing'
+      );
+    }
     if (!ctx.agent.toolIds.includes(call.name) || !toolRegistry.has(call.name)) {
       return fail(`Tool "${call.name}" is not available to this agent`, 'tool_not_available');
     }
