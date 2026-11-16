@@ -16,7 +16,7 @@ function safeNext(value: string | null): string {
 function LoginForm() {
   const { login, user } = useAuth();
   const router = useRouter();
-  const params = useSearchParams();
+  const params = useSearchParams()!;
   const next = safeNext(params.get('next'));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

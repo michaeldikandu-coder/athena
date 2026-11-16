@@ -13,3 +13,8 @@ export function workflowWebhookSecret(workflowId: string): string {
 export function workflowWebhookUrl(workflowId: string): string {
   return `${config.publicUrl.replace(/\/$/, '')}/api/webhooks/workflows/${workflowId}`;
 }
+
+/** Header value the platform signs its own run-continuation requests with */
+export function runContinuationSignature(executionId: string): string {
+  return `sha256=${hmacSha256Hex(config.webhookSigningSecret, `run:${executionId}`)}`;
+}

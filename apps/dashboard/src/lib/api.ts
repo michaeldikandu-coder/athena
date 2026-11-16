@@ -44,12 +44,12 @@ export async function api<T = any>(
   try {
     payload = (await response.json()) as Envelope<T>;
   } catch {
-    // non-JSON response: the Next.js proxy answers with plain text when the API is down
+    // non-JSON response: the platform answers with plain text when the API crashed or timed out
   }
 
   if (!response.ok || !payload?.success) {
     if (!payload && response.status >= 500) {
-      throw new ApiError('The Athena API is not answering. Start it with npm run dev:api.', response.status, 'api_unreachable');
+      throw new ApiError('The Athena API is not answering. Check the server logs.', response.status, 'api_unreachable');
     }
     const message = payload?.error?.message || `Request failed (${response.status})`;
     throw new ApiError(message, response.status, payload?.error?.code, payload?.error?.details);

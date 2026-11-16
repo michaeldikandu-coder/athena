@@ -12,7 +12,7 @@ Both run on the same agent loop, tool registry, permission checks, approval queu
 ## Architecture
 
 ```
-apps/dashboard (Next.js) ──/api proxy──▶ apps/api (Express + WebSocket)
+apps/dashboard (Next.js) ── src/pages/api ──▶ apps/api (Express, served in-process)
                                             │
           ┌─────────────────────────────────┼─────────────────────────────┐
           │                         packages/core                          │
@@ -34,8 +34,8 @@ apps/dashboard (Next.js) ──/api proxy──▶ apps/api (Express + WebSocket
 | `packages/core` | Runtime, tools, permissions, approvals, memory, events, monitor, workflows, LLM adapters, application contract |
 | `packages/integrations` | REST client with retries, Bachs/GitHub/HMAC signature checks, legacy CSV/XML normalization, connectors |
 | `apps/moneyguard`, `apps/opsguard` | Applications built on the `AthenaApplication` contract |
-| `apps/api` | Auth, REST API, webhooks, WebSocket |
-| `apps/dashboard` | Web UI |
+| `apps/api` | Auth, REST API, webhooks, realtime polling, run continuations |
+| `apps/dashboard` | Web UI, and the host that serves the API |
 
 ### How an execution runs
 
@@ -43,7 +43,8 @@ apps/dashboard (Next.js) ──/api proxy──▶ apps/api (Express + WebSocket
 2. The runtime loads the agent (prompt, model, permissions, tools) and its memory.
 3. The LLM picks a tool. Before it runs, the runtime checks that the tool is assigned, that the agent holds the tool's `requiredPermissions`, and validates the input with the tool's Zod schema.
 4. High-risk or approval-flagged tools pause the execution (`waiting_approval`). A reviewer approves or rejects in the dashboard; a rejection is returned to the agent, which explains and continues.
-5. Every step is stored as an execution event and streamed to the dashboard over WebSocket.
+5. Every step is stored as an execution event; the dashboard polls `/api/realtime` for changes.
+6. The run is checkpointed in MongoDB after each model turn and tool call, so it can pause for approval, continue in a new serverless invocation, or resume after a crash.
 
 ### LLM providers
 
@@ -59,9 +60,7 @@ Requirements: Node.js 20+, npm 10+, MongoDB 6+ (local or Atlas), and an Anthropi
 ```bash
 npm install
 cp .env.example .env        # fill in MONGODB_URI, JWT_SECRET, an LLM key, and integration keys
-npm run build:backend
-npm run dev:api             # API on :3001
-npm run dev:dashboard       # dashboard on :3000 (second terminal)
+npm run dev                 # dashboard and API together on :3000
 ```
 
 Open http://localhost:3000, create an account (the first account is admin), go to **Applications**, and install MoneyGuard and/or OpsGuard.
@@ -82,7 +81,7 @@ Server-only settings stay in `.env`: `OPSGUARD_LOG_FILES` (log files on the serv
 With the [Bachs CLI](https://docs.bachs.io/developer-portal/local-testing) you can forward sandbox events to your personal URL locally. The Connections page shows the exact command:
 
 ```bash
-bachs listen --forward-to localhost:3001/api/webhooks/bachs/<your-token> --events collection.failed,dispute.created
+bachs listen --forward-to localhost:3000/api/webhooks/bachs/<your-token> --events collection.failed,dispute.created
 # paste the signing secret it prints into Connections > Bachs > Webhook signing secret
 ```
 
@@ -134,17 +133,18 @@ Register it in `apps/api/src/index.ts` with `registerApplication(myApp)`. It the
 |---|---|
 | `npm run build` | Build all packages and the dashboard, in dependency order |
 | `npm run build:backend` | Build everything except the dashboard |
-| `npm run dev:api` / `npm run dev:dashboard` | Development servers |
-| `npm run start:api` / `npm run start:dashboard` | Run production builds |
+| `npm run dev` | Dashboard and API on one dev server (:3000) |
+| `npm start` | Run the production build |
+| `npm run dev:api` / `npm run start:api` | API alone as a long-lived Node server (:3001) |
 | `npm run type-check` / `npm run lint` | Checks |
 
 See [docs/deployment.md](docs/deployment.md) for deployment and [docs/demo/demo-script.md](docs/demo/demo-script.md) for the demo walkthrough.
 
 ## Known limitations
 
-- Executions run in the API process. If the API restarts mid-execution, in-flight executions are marked failed on startup. There is no job queue.
-- Run a single API instance: the event bus and webhook de-duplication are in memory.
-- Integration credentials are server-wide environment variables, not per user.
+- Live updates poll every 2.5 seconds instead of streaming.
+- On Vercel Hobby, scheduled workflows only run as often as the dashboard is open or a cron calls the tick (see docs/deployment.md).
+- A run interrupted mid tool call repeats that call when it resumes; tools that change things (refunds) use idempotency keys.
 - No automated test suite is checked in yet.
 
 Built with [Kiro](https://kiro.dev) for the Kiro Skeleton Crew hackathon.

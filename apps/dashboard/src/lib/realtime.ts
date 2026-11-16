@@ -12,23 +12,24 @@ export type RealtimeMessage =
 
 type Listener = (message: RealtimeMessage) => void;
 
-function wsBaseUrl(): string {
-  if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
-  const { protocol, hostname } = window.location;
-  const scheme = protocol === 'https:' ? 'wss' : 'ws';
-  return `${scheme}://${hostname}:3001/ws`;
-}
+const VISIBLE_MS = 2500;
+const HIDDEN_MS = 15000;
+const MAX_BACKOFF_MS = 30000;
 
 /**
- * One shared WebSocket per tab, with reconnect and fresh short-lived tokens
+ * One shared poller per tab. GET /api/realtime returns what changed since the
+ * last cursor; this works on serverless hosts where WebSockets are not
+ * available. Messages seen in the overlap between polls are dropped.
  */
 class RealtimeClient {
-  private socket: WebSocket | null = null;
   private listeners = new Set<Listener>();
   private statusListeners = new Set<(connected: boolean) => void>();
-  private retry = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private stopped = true;
+  private cursor: string | null = null;
+  private seen = new Map<string, number>();
+  private failures = 0;
+  private running = false;
+  private inFlight = false;
   connected = false;
 
   subscribe(listener: Listener): () => void {
@@ -36,7 +37,7 @@ class RealtimeClient {
     this.ensureStarted();
     return () => {
       this.listeners.delete(listener);
-      if (this.listeners.size === 0 && this.statusListeners.size === 0) this.stop();
+      this.maybeStop();
     };
   }
 
@@ -46,62 +47,74 @@ class RealtimeClient {
     this.ensureStarted();
     return () => {
       this.statusListeners.delete(listener);
-      if (this.listeners.size === 0 && this.statusListeners.size === 0) this.stop();
+      this.maybeStop();
     };
   }
 
   private setConnected(value: boolean): void {
+    if (this.connected === value) return;
     this.connected = value;
     this.statusListeners.forEach((l) => l(value));
   }
 
   private ensureStarted(): void {
-    if (!this.stopped) return;
-    this.stopped = false;
-    void this.connect();
+    if (this.running) return;
+    this.running = true;
+    document.addEventListener('visibilitychange', this.onVisibility);
+    void this.poll();
   }
 
-  private stop(): void {
-    this.stopped = true;
+  private maybeStop(): void {
+    if (this.listeners.size > 0 || this.statusListeners.size > 0) return;
+    this.running = false;
     if (this.timer) clearTimeout(this.timer);
-    this.socket?.close();
-    this.socket = null;
+    document.removeEventListener('visibilitychange', this.onVisibility);
   }
 
-  private async connect(): Promise<void> {
-    if (this.stopped) return;
-    try {
-      const { data } = await api<{ token: string }>('/auth/ws-token');
-      const socket = new WebSocket(`${wsBaseUrl()}?token=${encodeURIComponent(data.token)}`);
-      this.socket = socket;
-      socket.onopen = () => {
-        this.retry = 0;
-        this.setConnected(true);
-      };
-      socket.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data) as RealtimeMessage;
-          this.listeners.forEach((l) => l(message));
-        } catch {
-          // ignore malformed frames
-        }
-      };
-      socket.onclose = () => {
-        this.setConnected(false);
-        this.scheduleReconnect();
-      };
-      socket.onerror = () => socket.close();
-    } catch {
-      this.setConnected(false);
-      this.scheduleReconnect();
+  private onVisibility = (): void => {
+    // Catch up straight away when the tab comes back
+    if (document.visibilityState === 'visible' && this.running && !this.inFlight) {
+      if (this.timer) clearTimeout(this.timer);
+      void this.poll();
     }
+  };
+
+  /** Same message twice (poll overlap) is delivered once */
+  private key(m: RealtimeMessage): string {
+    if (m.type === 'execution.event') return `e:${m.data.id}`;
+    if (m.type === 'execution.status') return `s:${m.data.executionId}:${m.data.status}:${(m.data as { updatedAt?: string }).updatedAt}`;
+    if (m.type === 'approval.requested' || m.type === 'approval.decided') return `a:${m.data.approvalId}:${m.type}`;
+    return m.type;
   }
 
-  private scheduleReconnect(): void {
-    if (this.stopped) return;
-    const delay = Math.min(1000 * 2 ** this.retry, 15000);
-    this.retry += 1;
-    this.timer = setTimeout(() => void this.connect(), delay);
+  private async poll(): Promise<void> {
+    if (!this.running) return;
+    this.inFlight = true;
+    try {
+      const query = this.cursor ? `?since=${encodeURIComponent(this.cursor)}` : '';
+      const { data } = await api<{ cursor: string; messages: RealtimeMessage[] }>(`/realtime${query}`);
+      const first = this.cursor === null;
+      this.cursor = data.cursor;
+      this.failures = 0;
+      this.setConnected(true);
+      const now = Date.now();
+      for (const message of data.messages) {
+        const key = this.key(message);
+        if (this.seen.has(key)) continue;
+        this.seen.set(key, now);
+        if (!first) this.listeners.forEach((l) => l(message));
+      }
+      for (const [key, at] of this.seen) if (now - at > 60_000) this.seen.delete(key);
+    } catch {
+      this.failures += 1;
+      this.setConnected(false);
+    } finally {
+      this.inFlight = false;
+    }
+    if (!this.running) return;
+    const base = document.visibilityState === 'visible' ? VISIBLE_MS : HIDDEN_MS;
+    const delay = this.failures ? Math.min(base * 2 ** this.failures, MAX_BACKOFF_MS) : base;
+    this.timer = setTimeout(() => void this.poll(), delay);
   }
 }
 

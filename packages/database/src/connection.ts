@@ -65,7 +65,10 @@ export class DatabaseConnection {
   private options: ConnectionOptions;
 
   private constructor(options: ConnectionOptions) {
-    this.options = { ...DEFAULT_OPTIONS, ...options };
+    this.options = {
+      ...DEFAULT_OPTIONS,
+      ...Object.fromEntries(Object.entries(options).filter(([, v]) => v !== undefined)),
+    } as ConnectionOptions;
     this.setupEventHandlers();
   }
 
@@ -154,8 +157,15 @@ export class DatabaseConnection {
   }
 }
 
-export async function connectDatabase(uri: string): Promise<typeof mongoose> {
-  const db = DatabaseConnection.getInstance({ uri });
+/**
+ * Connect (or reuse the connection). Serverless callers pass retryAttempts: 1
+ * so a request never waits through several retries.
+ */
+export async function connectDatabase(
+  uri: string,
+  options: { retryAttempts?: number; maxPoolSize?: number } = {}
+): Promise<typeof mongoose> {
+  const db = DatabaseConnection.getInstance({ uri, ...options });
   return db.connect();
 }
 

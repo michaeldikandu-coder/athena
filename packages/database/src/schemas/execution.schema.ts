@@ -21,6 +21,11 @@ export interface IExecution {
   toolCallCount: number;
   usage: { inputTokens: number; outputTokens: number };
   cancelRequested: boolean;
+  /** JSON checkpoint of the run (messages, workflow position) so it can resume in a new process */
+  stateJson?: string;
+  /** Exclusive claim by the process currently advancing the run */
+  leaseId?: string | null;
+  leaseUntil?: Date | null;
   userId: string;
   createdAt: Date;
   updatedAt: Date;
@@ -103,6 +108,18 @@ export const ExecutionSchema = new Schema<IExecution>(
       type: Boolean,
       default: false,
     },
+    stateJson: {
+      type: String,
+      select: false,
+    },
+    leaseId: {
+      type: String,
+      default: null,
+    },
+    leaseUntil: {
+      type: Date,
+      default: null,
+    },
     userId: {
       type: String,
       required: true,
@@ -121,3 +138,5 @@ ExecutionSchema.index({ agentId: 1, status: 1 });
 ExecutionSchema.index({ userId: 1, startedAt: -1 });
 ExecutionSchema.index({ status: 1, startedAt: -1 });
 ExecutionSchema.index({ workflowId: 1, startedAt: -1 });
+ExecutionSchema.index({ status: 1, leaseUntil: 1 });
+ExecutionSchema.index({ userId: 1, updatedAt: -1 });

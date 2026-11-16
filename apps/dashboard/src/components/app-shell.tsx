@@ -57,7 +57,7 @@ function Logo() {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "/";
   const connected = useRealtimeStatus();
   const [pending, setPending] = useState(0);
   const [buildOpen, setBuildOpen] = useState(false);
@@ -89,7 +89,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       const res = await fetch('/api/health', { cache: 'no-store' });
       const body = await res.json().catch(() => null);
       setApiDown(!body);
-      setDbIssue(body && body.data && !body.data.database ? body.data.databaseReason ?? 'The database is not connected.' : null);
+      if (body && body.success === false) {
+        // e.g. "Server configuration error: JWT_SECRET must be at least 32 characters"
+        setDbIssue(body.error?.message ?? 'The server reported an error.');
+      } else {
+        setDbIssue(body && body.data && !body.data.database ? body.data.databaseReason ?? 'The database is not connected.' : null);
+      }
     } catch {
       setApiDown(true);
     }
@@ -228,9 +233,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-bad" aria-hidden />
               <span>
                 {apiDown ? (
-                  <><strong className="font-medium">The Athena API is not answering.</strong> Start it with <span className="mono">npm run dev:api</span> and check its terminal.</>
+                  <><strong className="font-medium">The Athena API is not answering.</strong> Check the server logs (locally, the terminal running <span className="mono">npm run dev</span>).</>
+                ) : (
+                  dbIssue?.startsWith('Server configuration error') ? (
+                  <><strong className="font-medium">The server is misconfigured.</strong> {dbIssue.replace('Server configuration error: ', '')}</>
                 ) : (
                   <><strong className="font-medium">Database unavailable.</strong> {dbIssue}</>
+                )
                 )}
               </span>
             </div>

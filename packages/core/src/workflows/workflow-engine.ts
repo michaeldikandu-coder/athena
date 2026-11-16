@@ -1,7 +1,10 @@
 import { z } from 'zod';
 import { IWorkflow, IWorkflowStep, WorkflowModel } from '@athena/database';
-import { AppError, NotFoundError, RateLimitError, ValidationError, logger, truncate } from '@athena/shared';
-import { agentRuntime, ExecutionCancelledError, RuntimeContext } from '../agent/agent-runtime';
+import { AppError, NotFoundError, ValidationError, logger, truncate } from '@athena/shared';
+import { agentRuntime, RuntimeContext } from '../agent/agent-runtime';
+import { scheduleRun } from '../runs/background';
+import { Budget, RunState, Suspension, WorkflowRunState, isSuspension } from '../runs/run-state';
+import { maybeRunMaintenance } from '../runs/maintenance';
 import { executionMonitor } from '../monitor/execution-monitor';
 import { eventBus, TriggerEvent } from '../events/event-bus';
 import { Condition, evaluateCondition, matchEventName, renderTemplate } from './template';
@@ -135,7 +138,11 @@ export class WorkflowEngine {
         logger.error('Trigger handling failed', error as Error, { event: event.event })
       );
     });
-    this.schedulerTimer = setInterval(() => void this.runScheduled(), SCHEDULER_TICK_MS);
+    // Long-lived servers run maintenance (schedules, expired approvals, stalled runs) every minute
+    this.schedulerTimer = setInterval(
+      () => void maybeRunMaintenance().catch((error) => logger.error('Maintenance tick failed', error as Error)),
+      SCHEDULER_TICK_MS
+    );
     logger.info('Workflow engine started');
   }
 
@@ -206,52 +213,64 @@ export class WorkflowEngine {
     return this.launch(workflow, { type: 'manual', source: 'dashboard', payload });
   }
 
-  private async launch(
+  async launch(
     workflow: WorkflowDoc,
     trigger: { type: string; source: string; payload: Record<string, any> }
   ): Promise<{ executionId: string }> {
-    if (agentRuntime.activeCount >= Number(process.env.MAX_CONCURRENT_EXECUTIONS || 5)) {
-      throw new RateLimitError();
-    }
+    await agentRuntime.assertCapacity(workflow.userId);
     const agent = await agentRuntime.loadAgent(workflow.agentId, workflow.userId);
-    const ctx = await agentRuntime.createExecution(agent, {
-      userId: workflow.userId,
-      task: `Workflow: ${workflow.name}`,
-      trigger,
-      workflowId: String(workflow._id),
-    });
+    const state: RunState = {
+      version: 1,
+      kind: 'workflow',
+      workflow: {
+        payload: trigger.payload,
+        scope: {
+          trigger: { payload: trigger.payload },
+          steps: {},
+          workflow: { id: String(workflow._id), name: workflow.name },
+        },
+        currentStepId: workflow.steps[0]?.id ?? null,
+        stepRuns: 0,
+      },
+    };
+    const ctx = await agentRuntime.createExecution(
+      agent,
+      { userId: workflow.userId, task: `Workflow: ${workflow.name}`, trigger, workflowId: String(workflow._id) },
+      state
+    );
     await WorkflowModel.updateOne({ _id: workflow._id }, { lastRunAt: new Date() });
-
-    void this.execute(workflow, ctx, trigger.payload);
+    scheduleRun(ctx.executionId);
     return { executionId: ctx.executionId };
   }
 
-  private async execute(
-    workflow: WorkflowDoc,
+  /**
+   * Advance a workflow run from its checkpoint. Returns the final summary, or a
+   * suspension when a step waits for approval or the time slice ends.
+   */
+  async advance(
+    workflowId: string,
     ctx: RuntimeContext,
-    payload: Record<string, any>
-  ): Promise<void> {
-    const statusTarget = { id: ctx.executionId, userId: ctx.userId, agentId: ctx.agent.id };
-    const scope: Record<string, any> = {
-      trigger: { payload },
-      steps: {} as Record<string, unknown>,
-      workflow: { id: String(workflow._id), name: workflow.name },
-    };
+    state: WorkflowRunState,
+    budget: Budget,
+    save: () => Promise<void>
+  ): Promise<{ summary?: string; steps: Record<string, unknown> } | Suspension> {
+    const workflow = (await WorkflowModel.findOne({ _id: workflowId, userId: ctx.userId }).lean()) as
+      | WorkflowDoc
+      | null;
+    if (!workflow) throw new NotFoundError('Workflow', workflowId);
+    const stepsById = new Map(workflow.steps.map((s) => [s.id, s]));
 
-    try {
-      await executionMonitor.setStatus(statusTarget, 'running');
+    while (state.currentStepId) {
+      const step = stepsById.get(state.currentStepId);
+      if (!step) throw new AppError(`Workflow step "${state.currentStepId}" no longer exists`);
+      await agentRuntime.assertNotCancelled(ctx.executionId);
+      if (!budget.hasTime()) return { suspended: 'budget' };
 
-      const stepsById = new Map(workflow.steps.map((s) => [s.id, s]));
-      let current: IWorkflowStep | undefined = workflow.steps[0];
-      let runs = 0;
-      let lastSummary: string | undefined;
-
-      while (current) {
-        if (++runs > MAX_STEP_RUNS) {
+      if (!state.step?.started) {
+        if (++state.stepRuns > MAX_STEP_RUNS) {
           throw new AppError(`Workflow exceeded ${MAX_STEP_RUNS} step runs (possible loop)`);
         }
-        const step: IWorkflowStep = current;
-
+        state.step = { started: true };
         await executionMonitor.record({
           executionId: ctx.executionId,
           userId: ctx.userId,
@@ -259,27 +278,25 @@ export class WorkflowEngine {
           output: { step: step.id, stepType: step.type, phase: 'started' },
           metadata: { workflowStep: step.id },
         });
-
-        const { output, next } = await this.runStep(step, ctx, scope, payload);
-        scope.steps[step.id] = { output };
-        if (step.type === 'agent_task' && typeof output === 'string') lastSummary = output;
-
-        const nextId = next !== undefined ? next : this.defaultNext(workflow.steps, step);
-        current = nextId ? stepsById.get(nextId) : undefined;
+        await save();
       }
 
-      await executionMonitor.setStatus(statusTarget, 'completed', {
-        result: { summary: lastSummary, steps: scope.steps },
-      });
-    } catch (error) {
-      if (error instanceof ExecutionCancelledError) {
-        await executionMonitor.setStatus(statusTarget, 'cancelled');
-        return;
+      const outcome = await this.runStep(step, ctx, state, budget, save);
+      if (isSuspension(outcome)) {
+        await save();
+        return outcome;
       }
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error('Workflow execution failed', error as Error, { executionId: ctx.executionId });
-      await executionMonitor.setStatus(statusTarget, 'failed', { error: message });
+
+      state.scope.steps[step.id] = { output: outcome.output };
+      if (step.type === 'agent_task' && typeof outcome.output === 'string') state.lastSummary = outcome.output;
+      const nextId = outcome.next !== undefined ? outcome.next : this.defaultNext(workflow.steps, step);
+      state.currentStepId = nextId ?? null;
+      state.step = undefined;
+      budget.worked();
+      await save();
     }
+
+    return { summary: state.lastSummary, steps: state.scope.steps };
   }
 
   private defaultNext(steps: IWorkflowStep[], step: IWorkflowStep): string | null {
@@ -291,29 +308,43 @@ export class WorkflowEngine {
   private async runStep(
     step: IWorkflowStep,
     ctx: RuntimeContext,
-    scope: Record<string, any>,
-    payload: Record<string, any>
-  ): Promise<{ output: unknown; next?: string | null }> {
+    state: WorkflowRunState,
+    budget: Budget,
+    save: () => Promise<void>
+  ): Promise<{ output: unknown; next?: string | null } | Suspension> {
+    const scope = state.scope;
+    const progress = state.step!;
     switch (step.type) {
       case 'agent_task': {
-        const cfg = stepConfigSchemas.agent_task.parse(step.config);
-        const task = String(renderTemplate(cfg.task, scope));
-        const context =
-          cfg.includePayload === false
-            ? { previousSteps: scope.steps }
-            : { triggerPayload: payload, previousSteps: scope.steps };
-        const result = await agentRuntime.runAgentTask(ctx, task, context);
+        if (!progress.agent) {
+          const cfg = stepConfigSchemas.agent_task.parse(step.config);
+          const task = String(renderTemplate(cfg.task, scope));
+          const context =
+            cfg.includePayload === false
+              ? { previousSteps: scope.steps }
+              : { triggerPayload: state.payload, previousSteps: scope.steps };
+          progress.agent = await agentRuntime.buildAgentState(ctx.agent, task, context);
+          await save();
+        }
+        const result = await agentRuntime.advanceAgent(ctx, progress.agent, budget, save);
+        if (isSuspension(result)) return result;
         return { output: result.summary };
       }
 
       case 'tool_call': {
         const cfg = stepConfigSchemas.tool_call.parse(step.config);
         const input = renderTemplate(cfg.input, scope) as Record<string, any>;
+        progress.callId = progress.callId ?? `${step.id}-${Date.now()}`;
         const result = await agentRuntime.invokeTool(
           ctx,
-          { id: `${step.id}-${Date.now()}`, name: cfg.tool, input },
-          `Workflow step "${step.id}" calls ${cfg.tool}`
+          { id: progress.callId, name: cfg.tool, input },
+          `Workflow step "${step.id}" calls ${cfg.tool}`,
+          progress.approvalId ? { approvalId: progress.approvalId } : undefined
         );
+        if (isSuspension(result)) {
+          if (result.suspended === 'approval') progress.approvalId = result.approvalId;
+          return result;
+        }
         if (!result.ok && !cfg.continueOnError) {
           throw new AppError(`Step "${step.id}" failed: ${truncate(result.content, 500)}`);
         }
@@ -323,12 +354,18 @@ export class WorkflowEngine {
       case 'approval': {
         const cfg = stepConfigSchemas.approval.parse(step.config);
         const message = String(renderTemplate(cfg.message, scope));
-        const decision = await agentRuntime.awaitApproval(
-          ctx,
-          'workflow_approval',
-          { step: step.id, message },
-          message
-        );
+        if (!progress.approvalId) {
+          const suspension = await agentRuntime.requestApproval(
+            ctx,
+            'workflow_approval',
+            { step: step.id, message },
+            message
+          );
+          if (suspension.suspended === 'approval') progress.approvalId = suspension.approvalId;
+          return suspension;
+        }
+        const decision = await agentRuntime.resolveApproval(ctx, progress.approvalId, 'workflow_approval');
+        if (decision.status === 'pending') return { suspended: 'approval', approvalId: progress.approvalId };
         if (!decision.approved) {
           throw new AppError(`Workflow stopped: approval ${decision.status} at step "${step.id}"`);
         }
@@ -348,32 +385,40 @@ export class WorkflowEngine {
     }
   }
 
-  private async runScheduled(): Promise<void> {
-    try {
-      const workflows = (await WorkflowModel.find({
-        status: 'active',
-        'trigger.type': 'schedule',
-      }).lean()) as WorkflowDoc[];
+  /**
+   * Start scheduled workflows that are due. Each workflow is claimed with a
+   * conditional update so overlapping ticks never start it twice.
+   */
+  async runScheduled(): Promise<number> {
+    const workflows = (await WorkflowModel.find({
+      status: 'active',
+      'trigger.type': 'schedule',
+    }).lean()) as WorkflowDoc[];
 
-      const now = Date.now();
-      for (const workflow of workflows) {
-        const interval = Number(workflow.trigger.config?.intervalMinutes || 0) * 60 * 1000;
-        if (!interval) continue;
-        const last = workflow.lastRunAt ? new Date(workflow.lastRunAt).getTime() : 0;
-        if (now - last < interval) continue;
+    const now = Date.now();
+    let started = 0;
+    for (const workflow of workflows) {
+      const interval = Number(workflow.trigger.config?.intervalMinutes || 0) * 60 * 1000;
+      if (!interval) continue;
+      const last = workflow.lastRunAt ? new Date(workflow.lastRunAt).getTime() : 0;
+      if (now - last < interval) continue;
+      const claimed = await WorkflowModel.updateOne(
+        { _id: workflow._id, lastRunAt: workflow.lastRunAt ?? null },
+        { lastRunAt: new Date(now) }
+      );
+      if (claimed.modifiedCount === 0) continue;
+      try {
         await this.launch(workflow, {
           type: 'schedule',
           source: 'scheduler',
           payload: { scheduledAt: new Date(now).toISOString() },
-        }).catch((error) =>
-          logger.error('Scheduled workflow failed to start', error as Error, {
-            workflowId: String(workflow._id),
-          })
-        );
+        });
+        started++;
+      } catch (error) {
+        logger.error('Scheduled workflow failed to start', error as Error, { workflowId: String(workflow._id) });
       }
-    } catch (error) {
-      logger.error('Scheduler tick failed', error as Error);
     }
+    return started;
   }
 }
 

@@ -32,3 +32,14 @@ export * from './workflows';
 export * from './application';
 // Per-user connections
 export { loadUserScope, withUserScope } from './connections';
+// Resumable runs
+export {
+  runInBackground,
+  scheduleRun,
+  setBackgroundRunner,
+  setContinuationHandler,
+  runSliceMs,
+} from './runs/background';
+export { driveRun, resumeStalledRuns } from './runs/run-driver';
+export { runMaintenance, maybeRunMaintenance } from './runs/maintenance';
+export type { RunState, AgentLoopState, WorkflowRunState, Suspension } from './runs/run-state';

@@ -10,7 +10,7 @@ import { ExecutionTable } from '@/components/execution-table';
 import { AppBadge, Button, Card, EmptyState, ErrorBanner, LoadingBlock, PageHeader, StatusBadge } from '@/components/ui';
 
 export default function AgentDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams<{ id: string }>()!;
   const router = useRouter();
   const [agent, setAgent] = useState<AgentDetail | null>(null);
   const [executions, setExecutions] = useState<Execution[]>([]);

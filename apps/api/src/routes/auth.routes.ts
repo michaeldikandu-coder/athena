@@ -18,7 +18,6 @@ import {
   requireAuth,
   setSessionCookie,
   signSessionToken,
-  signWsToken,
 } from '../middleware/auth';
 import { asyncHandler, validate } from '../middleware/validate';
 
@@ -110,8 +109,5 @@ router.get(
   })
 );
 
-router.get('/ws-token', requireAuth, (req, res) => {
-  res.json(successResponse({ token: signWsToken(req.user!) }));
-});
 
 export default router;

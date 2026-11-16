@@ -21,6 +21,7 @@ export { ExecutionEventModel } from './models/execution-event.model';
 export { MemoryModel } from './models/memory.model';
 export { ApprovalModel } from './models/approval.model';
 export { ConnectionModel } from './models/connection.model';
+export { WebhookDeliveryModel, SystemLockModel } from './models/system.model';
 
 // Schema Interfaces
 export type { IUser } from './schemas/user.schema';

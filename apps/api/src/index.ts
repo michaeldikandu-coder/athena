@@ -1,19 +1,16 @@
 import { createServer } from 'http';
 import { config } from './config';
-import { connectDatabase, disconnectDatabase } from '@athena/database';
-import {
-  agentRuntime,
-  approvalManager,
-  registerApplication,
-  registerBuiltInTools,
-  workflowEngine,
-} from '@athena/core';
-import { moneyGuardApp } from '@athena/moneyguard';
-import { opsGuardApp } from '@athena/opsguard';
+import { disconnectDatabase } from '@athena/database';
+import { resumeStalledRuns, workflowEngine } from '@athena/core';
 import { logger } from '@athena/shared';
 import { createApp } from './app';
-import { attachWebSocketServer } from './websocket/server';
-import { syncInstalledApplications } from './services/app-installer';
+import { ensureDatabase, registerApplications } from './bootstrap';
+
+/**
+ * Long-lived server mode (e.g. `npm run dev:api` or a container host). The
+ * same API also runs inside the dashboard's Next.js app, which is how it is
+ * deployed to Vercel (see serverless.ts).
+ */
 
 /**
  * Connect to MongoDB. If it is unreachable the API still starts, so the
@@ -23,12 +20,9 @@ async function connectWithBackgroundRetry(): Promise<void> {
   const RETRY_MS = 30000;
   const attempt = async (): Promise<void> => {
     try {
-      await connectDatabase(config.mongoUri);
-      const recovered = await agentRuntime.recoverInterrupted();
-      if (recovered > 0) logger.warn('Marked interrupted executions as failed', { count: recovered });
-      // Installed MoneyGuard/OpsGuard agents follow the templates in the code
-      const upgraded = await syncInstalledApplications();
-      if (upgraded > 0) logger.info('Installed applications upgraded', { count: upgraded });
+      await ensureDatabase({ retryAttempts: 3 });
+      const resumed = await resumeStalledRuns();
+      if (resumed > 0) logger.info('Resumed runs interrupted by a restart', { count: resumed });
     } catch (error) {
       console.error(`\n${(error as Error).message}\nThe API keeps running and retries every ${RETRY_MS / 1000}s.\n`);
       setTimeout(() => void attempt(), RETRY_MS);
@@ -38,20 +32,12 @@ async function connectWithBackgroundRetry(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  // Both applications plug into the same runtime
-  registerBuiltInTools();
-  registerApplication(moneyGuardApp);
-  registerApplication(opsGuardApp);
-
+  registerApplications();
   await connectWithBackgroundRetry();
+  // Event-bus triggers plus a maintenance tick every minute
   workflowEngine.start();
-  const approvalCleanup = setInterval(() => {
-    void approvalManager.cleanupExpired().catch((error) => logger.error('Approval cleanup failed', error));
-  }, 60 * 1000);
 
   const server = createServer(createApp());
-  const wss = attachWebSocketServer(server);
-
   server.listen(config.port, () => {
     logger.info(`Athena API listening on port ${config.port}`, {
       corsOrigins: config.corsOrigins,
@@ -61,9 +47,7 @@ async function main(): Promise<void> {
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info(`Received ${signal}, shutting down`);
-    clearInterval(approvalCleanup);
     workflowEngine.stop();
-    wss.close();
     server.close();
     await disconnectDatabase().catch(() => undefined);
     process.exit(0);

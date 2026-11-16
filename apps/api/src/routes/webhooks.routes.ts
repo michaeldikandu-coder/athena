@@ -1,6 +1,6 @@
 import { Request, Router } from 'express';
-import { WorkflowModel } from '@athena/database';
-import { eventBus, workflowEngine } from '@athena/core';
+import { WebhookDeliveryModel, WorkflowModel } from '@athena/database';
+import { runInBackground, workflowEngine } from '@athena/core';
 import { verifyBachsSignature, verifyGithubSignature, verifyHmacSignature } from '@athena/integrations';
 import { AppError, UnauthorizedError, commonSchemas, logger, successResponse } from '@athena/shared';
 import { asyncHandler } from '../middleware/validate';
@@ -10,18 +10,17 @@ import { findWebhookConnection, markWebhookReceived } from '../services/connecti
 const router = Router();
 
 /**
- * Providers retry deliveries; remember recent ids so each event runs once.
+ * Providers retry deliveries; remember delivery ids (in MongoDB, for a day)
+ * so each event runs once even across server instances.
  */
-const seen = new Map<string, number>();
-const SEEN_TTL_MS = 24 * 60 * 60 * 1000;
-function alreadyProcessed(key: string): boolean {
-  const now = Date.now();
-  if (seen.size > 5000) {
-    for (const [k, t] of seen) if (now - t > SEEN_TTL_MS) seen.delete(k);
+async function alreadyProcessed(key: string): Promise<boolean> {
+  try {
+    await WebhookDeliveryModel.create({ _id: key });
+    return false;
+  } catch (error) {
+    if ((error as { code?: number }).code === 11000) return true;
+    throw error;
   }
-  if (seen.has(key)) return true;
-  seen.set(key, now);
-  return false;
 }
 
 function rawBody(req: Request): Buffer {
@@ -53,17 +52,21 @@ router.post(
       throw new AppError('Invalid Bachs event envelope', { statusCode: 400 });
     }
 
-    res.json({ received: true });
-    void markWebhookReceived('bachs', token).catch(() => undefined);
-    if (alreadyProcessed(`bachs:${token}:${event.id}`)) return;
+    const duplicate = await alreadyProcessed(`bachs:${token}:${event.id}`);
+    res.json({ received: true, ...(duplicate ? { duplicate: true } : {}) });
+    runInBackground(() => markWebhookReceived('bachs', token));
+    if (duplicate) return;
 
     logger.info('Bachs webhook received', { type: event.type, id: event.id, userId: connection.userId });
-    eventBus.emit('trigger', {
-      event: `bachs.${event.type}`,
-      source: 'bachs',
-      payload: req.body,
-      userId: connection.userId,
-    });
+    const body = req.body as Record<string, any>;
+    runInBackground(() =>
+      workflowEngine.handleTrigger({
+        event: `bachs.${event.type}`,
+        source: 'bachs',
+        payload: body,
+        userId: connection.userId,
+      })
+    );
   })
 );
 
@@ -80,17 +83,21 @@ router.post(
     const delivery = req.header('x-github-delivery');
     if (!eventName) throw new AppError('Missing X-GitHub-Event header', { statusCode: 400 });
 
+    const skip = eventName === 'ping' || (delivery ? await alreadyProcessed(`github:${token}:${delivery}`) : false);
     res.json({ received: true });
-    void markWebhookReceived('github', token).catch(() => undefined);
-    if (eventName === 'ping' || (delivery && alreadyProcessed(`github:${token}:${delivery}`))) return;
+    runInBackground(() => markWebhookReceived('github', token));
+    if (skip) return;
 
     logger.info('GitHub webhook received', { event: eventName, delivery, userId: connection.userId });
-    eventBus.emit('trigger', {
-      event: `github.${eventName}`,
-      source: 'github',
-      payload: req.body,
-      userId: connection.userId,
-    });
+    const body = req.body as Record<string, any>;
+    runInBackground(() =>
+      workflowEngine.handleTrigger({
+        event: `github.${eventName}`,
+        source: 'github',
+        payload: body,
+        userId: connection.userId,
+      })
+    );
   })
 );
 
@@ -130,7 +137,7 @@ router.post(
       throw new AppError('Workflow is inactive', { statusCode: 409 });
     }
     const deliveryId = req.header('x-athena-delivery');
-    if (deliveryId && alreadyProcessed(`workflow:${id}:${deliveryId}`)) {
+    if (deliveryId && (await alreadyProcessed(`workflow:${id}:${deliveryId}`))) {
       res.json(successResponse({ duplicate: true }));
       return;
     }

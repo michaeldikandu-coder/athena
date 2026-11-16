@@ -22,7 +22,9 @@
     "start:dashboard": "npm run start -w @athena/dashboard",
     "lint": "npm run lint --workspaces --if-present",
     "type-check": "tsc -b --noEmit && npm run type-check -w @athena/dashboard",
-    "clean": "tsc -b --clean; rm -rf packages/*/dist apps/*/dist apps/dashboard/.next apps/dashboard/.next-dev"
+    "clean": "tsc -b --clean; rm -rf packages/*/dist apps/*/dist apps/dashboard/.next apps/dashboard/.next-dev",
+    "dev": "npm run dev -w @athena/dashboard",
+    "start": "npm run start -w @athena/dashboard"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

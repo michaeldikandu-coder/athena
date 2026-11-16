@@ -13,7 +13,7 @@ import { AppBadge, Button, Card, Dl, ErrorBanner, JsonBlock, LoadingBlock, Mono,
 const ACTIVE = ['pending', 'running', 'waiting_approval'];
 
 export default function ExecutionDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams<{ id: string }>()!;
   const [execution, setExecution] = useState<ExecutionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);

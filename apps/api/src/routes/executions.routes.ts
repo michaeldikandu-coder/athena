@@ -79,7 +79,7 @@ router.get(
         byStatus: Object.fromEntries(byStatus.map((s) => [s._id, s.count])),
         byApplication: byApp.map((a) => ({ application: a._id, executions: a.count, toolCalls: a.toolCalls })),
         pendingApprovals: pendingApprovals.length,
-        activeExecutions: agentRuntime.activeCount,
+        activeExecutions: await agentRuntime.countActive(userId),
       })
     );
   })

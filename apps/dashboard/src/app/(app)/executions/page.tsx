@@ -12,7 +12,7 @@ const STATUSES = ['', 'running', 'waiting_approval', 'completed', 'failed', 'can
 
 function ExecutionsList() {
   const router = useRouter();
-  const params = useSearchParams();
+  const params = useSearchParams()!;
   const status = params.get('status') ?? '';
   const application = params.get('application') ?? '';
   const page = Number(params.get('page') ?? 1);

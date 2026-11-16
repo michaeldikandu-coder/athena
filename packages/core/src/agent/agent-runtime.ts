@@ -1,4 +1,4 @@
-import { AgentModel, AgentToolModel, ExecutionModel, IAgent } from '@athena/database';
+import { AgentModel, AgentToolModel, ApprovalModel, ExecutionModel, IAgent } from '@athena/database';
 import {
   AgentNotFoundError,
   AppError,
@@ -17,8 +17,11 @@ import { executionMonitor } from '../monitor/execution-monitor';
 import { memoryManager } from '../memory/memory-manager';
 import { builtInTools } from '../memory/memory-tools';
 import { getLLMClient, defaultModel } from '../llm/llm-factory';
-import { LLMMessage, LLMToolCall } from '../llm/llm.types';
+import { LLMToolCall } from '../llm/llm.types';
 import { withUserScope } from '../connections';
+import { eventBus } from '../events/event-bus';
+import { scheduleRun } from '../runs/background';
+import { AgentLoopState, Budget, RunState, Suspension, isSuspension, serializeRunState } from '../runs/run-state';
 
 export interface LoadedAgent {
   id: string;
@@ -68,6 +71,10 @@ export interface ToolInvocationResult {
   data?: unknown;
 }
 
+export type ApprovalResolution =
+  | { status: 'pending' }
+  | { status: 'approved' | 'rejected' | 'expired'; approved: boolean; comment?: string };
+
 export class ExecutionCancelledError extends AppError {
   constructor(executionId: string) {
     super('Execution was cancelled', { statusCode: 409, context: { executionId } });
@@ -75,7 +82,11 @@ export class ExecutionCancelledError extends AppError {
 }
 
 const MAX_TOOL_RESULT_CHARS = 15000;
-const MAX_CONCURRENT = Number(process.env.MAX_CONCURRENT_EXECUTIONS || 5);
+const ACTIVE_STATUSES = ['pending', 'running', 'waiting_approval'];
+
+function maxConcurrent(): number {
+  return Number(process.env.MAX_CONCURRENT_EXECUTIONS || 5);
+}
 
 const PLATFORM_RULES = `
 You are running on Athena, an agent runtime with audited tools.
@@ -89,13 +100,17 @@ Rules:
 /**
  * Agent Runtime - runs the reasoning/tool loop for any Athena agent.
  * Applications provide tools and prompts; the runtime is identical for all of them.
+ *
+ * Runs are checkpointed in MongoDB after each step (see runs/run-driver.ts), so
+ * a run can pause for a human approval or a time limit and continue in any process.
  */
 export class AgentRuntime {
   private static instance: AgentRuntime;
-  private active = new Set<string>();
-  private cancelled = new Set<string>();
 
-  private constructor() {}
+  private constructor() {
+    // A decision resumes the run that was waiting for it
+    eventBus.on('approval.decided', ({ executionId }) => scheduleRun(executionId));
+  }
 
   static getInstance(): AgentRuntime {
     if (!AgentRuntime.instance) {
@@ -104,8 +119,17 @@ export class AgentRuntime {
     return AgentRuntime.instance;
   }
 
-  get activeCount(): number {
-    return this.active.size;
+  /** Runs that are queued, running, or waiting for approval */
+  async countActive(userId?: string): Promise<number> {
+    return ExecutionModel.countDocuments({
+      status: { $in: ACTIVE_STATUSES.filter((s) => s !== 'waiting_approval') },
+      ...(userId ? { userId } : {}),
+    });
+  }
+
+  /** Refuse new runs when this user already has too many in progress */
+  async assertCapacity(userId: string): Promise<void> {
+    if ((await this.countActive(userId)) >= maxConcurrent()) throw new RateLimitError();
   }
 
   /**
@@ -154,11 +178,12 @@ export class AgentRuntime {
   }
 
   /**
-   * Create an execution record in pending state
+   * Create an execution record in pending state with its initial checkpoint
    */
   async createExecution(
     agent: LoadedAgent,
-    input: Omit<StartExecutionInput, 'agentId'>
+    input: Omit<StartExecutionInput, 'agentId'>,
+    state?: RunState
   ): Promise<RuntimeContext> {
     const execution = await ExecutionModel.create({
       agentId: agent.id,
@@ -169,6 +194,7 @@ export class AgentRuntime {
       trigger: input.trigger ?? { type: 'manual', source: 'dashboard', payload: input.context ?? {} },
       status: 'pending',
       startedAt: new Date(),
+      ...(state ? { stateJson: serializeRunState(state) } : {}),
     });
     return {
       executionId: String(execution._id),
@@ -182,68 +208,35 @@ export class AgentRuntime {
    * Start an agent execution in the background and return its id immediately
    */
   async start(input: StartExecutionInput): Promise<{ executionId: string }> {
-    if (this.active.size >= MAX_CONCURRENT) {
-      throw new RateLimitError();
-    }
+    await this.assertCapacity(input.userId);
     const agent = await this.loadAgent(input.agentId, input.userId);
-    const ctx = await this.createExecution(agent, input);
-
-    void this.runToCompletion(ctx, input.task, input.context);
+    const agentState = await this.buildAgentState(agent, input.task, input.context);
+    const ctx = await this.createExecution(agent, input, { version: 1, kind: 'agent', agent: agentState });
+    scheduleRun(ctx.executionId);
     return { executionId: ctx.executionId };
   }
 
   /**
-   * Run an agent task inside a new execution and wait for the outcome
+   * Initial state of a reasoning loop: system prompt (with memory) and the task
    */
-  async runToCompletion(
-    ctx: RuntimeContext,
+  async buildAgentState(
+    agent: LoadedAgent,
     task: string,
     context?: Record<string, any>
-  ): Promise<{ status: 'completed' | 'failed' | 'cancelled'; summary?: string; error?: string }> {
-    this.active.add(ctx.executionId);
-    const statusTarget = { id: ctx.executionId, userId: ctx.userId, agentId: ctx.agent.id };
-    try {
-      await executionMonitor.setStatus(statusTarget, 'running');
-      const outcome = await this.runAgentTask(ctx, task, context);
-      await executionMonitor.setStatus(statusTarget, 'completed', {
-        result: { summary: outcome.summary, incomplete: outcome.incomplete },
-      });
-      return { status: 'completed', summary: outcome.summary };
-    } catch (error) {
-      if (error instanceof ExecutionCancelledError) {
-        await executionMonitor.setStatus(statusTarget, 'cancelled');
-        return { status: 'cancelled' };
-      }
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error('Execution failed', error as Error, { executionId: ctx.executionId });
-      await executionMonitor
-        .record({
-          executionId: ctx.executionId,
-          userId: ctx.userId,
-          type: 'error',
-          output: { message },
-          status: 'failure',
-        })
-        .catch(() => undefined);
-      await executionMonitor.setStatus(statusTarget, 'failed', { error: message });
-      return { status: 'failed', error: message };
-    } finally {
-      this.active.delete(ctx.executionId);
-      this.cancelled.delete(ctx.executionId);
-    }
+  ): Promise<AgentLoopState> {
+    const memoryContext = await memoryManager.buildContext(agent.id);
+    const system = [agent.systemPrompt, PLATFORM_RULES, `Current time: ${new Date().toISOString()}`, memoryContext]
+      .filter(Boolean)
+      .join('\n\n');
+    const userContent =
+      context && Object.keys(context).length > 0
+        ? `${task}\n\nContext (JSON):\n${truncate(JSON.stringify(context, null, 2), 20000)}`
+        : task;
+    return { task, system, messages: [{ role: 'user', content: userContent }], iteration: 0, lastText: '' };
   }
 
-  /**
-   * The reasoning loop. Used directly by the workflow engine for agent_task steps.
-   */
-  async runAgentTask(
-    ctx: RuntimeContext,
-    task: string,
-    context?: Record<string, any>
-  ): Promise<{ summary: string; incomplete: boolean }> {
-    const { agent } = ctx;
-    const llm = getLLMClient(agent.provider);
-    const tools = agent.toolIds.map((id) => {
+  private describeTools(agent: LoadedAgent) {
+    return agent.toolIds.map((id) => {
       const descriptor = toolRegistry.describe(id);
       const approvalNote = descriptor.requiresApproval ? ' [Requires human approval]' : '';
       return {
@@ -252,37 +245,73 @@ export class AgentRuntime {
         inputSchema: descriptor.inputSchema,
       };
     });
+  }
 
-    const memoryContext = await memoryManager.buildContext(agent.id);
-    const system = [
-      agent.systemPrompt,
-      PLATFORM_RULES,
-      `Current time: ${new Date().toISOString()}`,
-      memoryContext,
-    ]
-      .filter(Boolean)
-      .join('\n\n');
+  /**
+   * Advance the reasoning loop from its checkpoint until it finishes, needs an
+   * approval, or the time slice runs out. `save` persists the checkpoint and is
+   * called after every model turn and tool call.
+   */
+  async advanceAgent(
+    ctx: RuntimeContext,
+    state: AgentLoopState,
+    budget: Budget,
+    save: () => Promise<void>
+  ): Promise<{ summary: string; incomplete: boolean } | Suspension> {
+    const { agent } = ctx;
 
-    const userContent =
-      context && Object.keys(context).length > 0
-        ? `${task}\n\nContext (JSON):\n${truncate(JSON.stringify(context, null, 2), 20000)}`
-        : task;
-    const messages: LLMMessage[] = [{ role: 'user', content: userContent }];
-
-    let finalText = '';
-    let incomplete = true;
-
-    for (let iteration = 1; iteration <= agent.maxIterations; iteration++) {
+    for (;;) {
       await this.assertNotCancelled(ctx.executionId);
 
-      const response = await llm.chat({
+      // Finish the tool calls of the last model turn first
+      if (state.pending) {
+        const pending = state.pending;
+        while (pending.index < pending.calls.length) {
+          if (!budget.hasTime()) return { suspended: 'budget' };
+          const call = pending.calls[pending.index];
+          const result = await this.invokeTool(
+            ctx,
+            call,
+            pending.reasoning,
+            pending.approvalId ? { approvalId: pending.approvalId } : undefined
+          );
+          if (isSuspension(result)) {
+            if (result.suspended === 'approval') {
+              pending.approvalId = result.approvalId;
+              await save();
+            }
+            return result;
+          }
+          state.messages.push({
+            role: 'tool',
+            toolCallId: call.id,
+            toolName: call.name,
+            content: result.content,
+            isError: !result.ok,
+          });
+          pending.index += 1;
+          pending.approvalId = undefined;
+          budget.worked();
+          await save();
+          await this.assertNotCancelled(ctx.executionId);
+        }
+        state.pending = undefined;
+        await save();
+      }
+
+      if (state.iteration >= agent.maxIterations) return this.finishAgent(ctx, state, true);
+      if (!budget.hasTime()) return { suspended: 'budget' };
+
+      const response = await getLLMClient(agent.provider).chat({
         model: agent.model,
-        system,
-        messages,
-        tools,
+        system: state.system,
+        messages: state.messages,
+        tools: this.describeTools(agent),
         temperature: agent.temperature,
         maxTokens: agent.maxTokens,
       });
+      state.iteration += 1;
+      budget.worked();
 
       await ExecutionModel.updateOne(
         { _id: ctx.executionId },
@@ -304,7 +333,7 @@ export class AgentRuntime {
             text: response.text,
             ...(response.reasoning ? { reasoning: truncate(response.reasoning, 4000) } : {}),
           },
-          metadata: { iteration, stopReason: response.stopReason },
+          metadata: { iteration: state.iteration, stopReason: response.stopReason },
         });
       }
 
@@ -312,60 +341,59 @@ export class AgentRuntime {
         throw new AppError('The model declined this request', { statusCode: 422 });
       }
 
-      messages.push({
+      state.messages.push({
         role: 'assistant',
         content: response.text,
         toolCalls: response.toolCalls,
         providerContent: response.providerContent,
         provider: agent.provider,
       });
+      state.lastText = response.text;
 
       if (response.toolCalls.length === 0) {
-        finalText = response.text;
-        incomplete = response.stopReason === 'max_tokens';
-        break;
+        await save();
+        return this.finishAgent(ctx, state, response.stopReason === 'max_tokens');
       }
 
-      for (const call of response.toolCalls) {
-        const result = await this.invokeTool(ctx, call, response.text);
-        messages.push({
-          role: 'tool',
-          toolCallId: call.id,
-          toolName: call.name,
-          content: result.content,
-          isError: !result.ok,
-        });
-      }
-
-      finalText = response.text;
+      state.pending = { calls: response.toolCalls, index: 0, reasoning: response.text };
+      await save();
     }
+  }
 
-    if (incomplete && !finalText) {
-      finalText = `Stopped after ${agent.maxIterations} iterations without a final report.`;
+  private async finishAgent(
+    ctx: RuntimeContext,
+    state: AgentLoopState,
+    incomplete: boolean
+  ): Promise<{ summary: string; incomplete: boolean }> {
+    let summary = state.lastText;
+    if (incomplete && !summary) {
+      summary = `Stopped after ${ctx.agent.maxIterations} iterations without a final report.`;
     }
-
     await memoryManager
       .store({
-        agentId: agent.id,
+        agentId: ctx.agent.id,
         executionId: ctx.executionId,
         type: 'decision',
-        content: `Task: ${truncate(task, 200)} | Outcome: ${truncate(finalText, 800)}`,
+        content: `Task: ${truncate(state.task, 200)} | Outcome: ${truncate(summary, 800)}`,
       })
       .catch((error) => logger.warn('Failed to store decision memory', { error: String(error) }));
-
-    return { summary: finalText, incomplete };
+    return { summary, incomplete };
   }
 
   /**
    * Invoke a tool on behalf of an agent: availability, permission, validation,
    * approval, execution, and timeline recording. All tool calls (agent loop and
    * workflow steps) go through here.
+   *
+   * Approval-gated tools return a suspension the first time; call again with
+   * the approval id once it is decided.
    */
   async invokeTool(
     ctx: RuntimeContext,
     call: LLMToolCall,
-    reasoning?: string
-  ): Promise<ToolInvocationResult> {
+    reasoning?: string,
+    resume?: { approvalId: string }
+  ): Promise<ToolInvocationResult | Suspension> {
     const record = (type: Parameters<typeof executionMonitor.record>[0]['type'], extra: object) =>
       executionMonitor.record({
         executionId: ctx.executionId,
@@ -375,7 +403,9 @@ export class AgentRuntime {
         ...extra,
       });
 
-    await record('tool_call', { input: call.input, status: 'pending', metadata: { callId: call.id } });
+    if (!resume) {
+      await record('tool_call', { input: call.input, status: 'pending', metadata: { callId: call.id } });
+    }
 
     const fail = async (message: string, code: string): Promise<ToolInvocationResult> => {
       await record('tool_result', {
@@ -415,7 +445,11 @@ export class AgentRuntime {
     }
 
     if (toolRegistry.requiresApproval(tool.id)) {
-      const decision = await this.awaitApproval(ctx, tool.id, input as Record<string, any>, reasoning);
+      if (!resume) {
+        return this.requestApproval(ctx, tool.id, input as Record<string, any>, reasoning);
+      }
+      const decision = await this.resolveApproval(ctx, resume.approvalId, tool.id);
+      if (decision.status === 'pending') return { suspended: 'approval', approvalId: resume.approvalId };
       if (!decision.approved) {
         return fail(
           `Human reviewer ${decision.status} this action${decision.comment ? `: ${decision.comment}` : ''}`,
@@ -457,15 +491,15 @@ export class AgentRuntime {
   }
 
   /**
-   * Pause the execution until a human approves or rejects. Used for approval-gated
-   * tools and for explicit approval steps in workflows.
+   * Ask a human to approve an action and pause the run. Used for
+   * approval-gated tools and for explicit approval steps in workflows.
    */
-  async awaitApproval(
+  async requestApproval(
     ctx: RuntimeContext,
     toolId: string,
     input: Record<string, any>,
     reasoning?: string
-  ): Promise<{ approved: boolean; status: string; comment?: string }> {
+  ): Promise<Suspension> {
     const approval = await approvalManager.requestApproval({
       executionId: ctx.executionId,
       agentId: ctx.agent.id,
@@ -475,7 +509,6 @@ export class AgentRuntime {
       reason: truncate(reasoning || `Agent ${ctx.agent.name} requested ${toolId}`, 2000),
     });
     const approvalId = String(approval._id);
-    const statusTarget = { id: ctx.executionId, userId: ctx.userId, agentId: ctx.agent.id };
 
     await executionMonitor.record({
       executionId: ctx.executionId,
@@ -486,87 +519,75 @@ export class AgentRuntime {
       status: 'pending',
       metadata: { approvalId, expiresAt: approval.expiresAt },
     });
-    await executionMonitor.setStatus(statusTarget, 'waiting_approval');
-
-    const outcome = await approvalManager.waitForDecision(approvalId, () =>
-      this.isCancelled(ctx.executionId)
+    await executionMonitor.setStatus(
+      { id: ctx.executionId, userId: ctx.userId, agentId: ctx.agent.id },
+      'waiting_approval'
     );
+    return { suspended: 'approval', approvalId };
+  }
 
-    if (outcome.status === 'cancelled') {
-      throw new ExecutionCancelledError(ctx.executionId);
+  /**
+   * Read the outcome of an approval. Records the decision on the timeline and
+   * puts the run back to running once it is decided or has expired.
+   */
+  async resolveApproval(ctx: RuntimeContext, approvalId: string, toolId: string): Promise<ApprovalResolution> {
+    let approval = await ApprovalModel.findById(approvalId).lean();
+    if (!approval) throw new NotFoundError('Approval', approvalId);
+
+    if (approval.status === 'pending') {
+      if (new Date() <= new Date(approval.expiresAt)) return { status: 'pending' };
+      await ApprovalModel.updateOne({ _id: approvalId, status: 'pending' }, { status: 'expired' });
+      approval = { ...approval, status: 'expired' };
     }
 
+    const status = approval.status as 'approved' | 'rejected' | 'expired';
     await executionMonitor.record({
       executionId: ctx.executionId,
       userId: ctx.userId,
       type: 'approval_decision',
       tool: toolId,
-      output: {
-        status: outcome.status,
-        reviewerId: outcome.approval.reviewerId,
-        comment: outcome.approval.reviewerComment,
-      },
-      status: outcome.status === 'approved' ? 'success' : 'failure',
+      output: { status, reviewerId: approval.reviewerId, comment: approval.reviewerComment },
+      status: status === 'approved' ? 'success' : 'failure',
       metadata: { approvalId },
     });
-    await executionMonitor.setStatus(statusTarget, 'running');
-
-    return {
-      approved: outcome.status === 'approved',
-      status: outcome.status,
-      comment: outcome.approval.reviewerComment,
-    };
+    await executionMonitor.setStatus(
+      { id: ctx.executionId, userId: ctx.userId, agentId: ctx.agent.id },
+      'running'
+    );
+    return { status, approved: status === 'approved', comment: approval.reviewerComment };
   }
 
   /**
-   * Request cancellation. Takes effect at the next iteration, tool call, or approval poll.
+   * Cancel a run. A run that is waiting (queued or for approval) ends now; a
+   * run in progress stops at its next model turn or tool call.
    */
   async cancel(executionId: string, userId: string): Promise<void> {
-    const execution = await ExecutionModel.findOne({ _id: executionId, userId });
+    const execution = await ExecutionModel.findOne({ _id: executionId, userId }).lean();
     if (!execution) throw new NotFoundError('Execution', executionId);
     if (['completed', 'failed', 'cancelled'].includes(execution.status)) {
       throw new AppError(`Execution already ${execution.status}`, { statusCode: 409 });
     }
     await ExecutionModel.updateOne({ _id: executionId }, { cancelRequested: true });
-    this.cancelled.add(executionId);
 
-    // Executions not running in this process (e.g. pending) are closed directly
-    if (!this.active.has(executionId)) {
-      await executionMonitor.setStatus(
-        { id: executionId, userId, agentId: execution.agentId },
-        'cancelled'
+    const leased = execution.leaseUntil && new Date(execution.leaseUntil) > new Date();
+    if (!leased) {
+      await ApprovalModel.updateMany(
+        { executionId, status: 'pending' },
+        { status: 'expired', reviewerComment: 'Execution cancelled' }
       );
+      await executionMonitor.setStatus({ id: executionId, userId, agentId: execution.agentId }, 'cancelled');
     }
   }
 
-  private async isCancelled(executionId: string): Promise<boolean> {
-    if (this.cancelled.has(executionId)) return true;
+  async isCancelled(executionId: string): Promise<boolean> {
     const execution = await ExecutionModel.findById(executionId).select('cancelRequested').lean();
     return Boolean(execution?.cancelRequested);
   }
 
-  private async assertNotCancelled(executionId: string): Promise<void> {
+  async assertNotCancelled(executionId: string): Promise<void> {
     if (await this.isCancelled(executionId)) {
       throw new ExecutionCancelledError(executionId);
     }
-  }
-
-  /**
-   * Executions are held in memory while running. After a restart, mark any that
-   * were in flight as failed so they do not appear stuck.
-   */
-  async recoverInterrupted(): Promise<number> {
-    const stuck = await ExecutionModel.find({
-      status: { $in: ['pending', 'running', 'waiting_approval'] },
-    }).lean();
-    for (const execution of stuck) {
-      await executionMonitor.setStatus(
-        { id: String(execution._id), userId: execution.userId, agentId: execution.agentId },
-        'failed',
-        { error: 'Interrupted by server restart' }
-      );
-    }
-    return stuck.length;
   }
 }
 

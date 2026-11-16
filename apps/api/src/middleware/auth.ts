@@ -32,18 +32,7 @@ export function signSessionToken(user: AuthUser): string {
   });
 }
 
-/**
- * Short-lived token used only to open a WebSocket connection
- */
-export function signWsToken(user: AuthUser): string {
-  return jwt.sign({ role: user.role }, config.jwtSecret, {
-    subject: user.id,
-    audience: 'ws',
-    expiresIn: 60,
-  });
-}
-
-export function verifyToken(token: string, audience: 'session' | 'ws'): AuthUser {
+export function verifyToken(token: string, audience: 'session'): AuthUser {
   try {
     const payload = jwt.verify(token, config.jwtSecret, {
       audience,

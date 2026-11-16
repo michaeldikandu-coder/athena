@@ -8,7 +8,7 @@ import { ExecutionTable } from '@/components/execution-table';
 import { AppBadge, Badge, Button, Card, ErrorBanner, JsonBlock, LoadingBlock, PageHeader, StatusBadge } from '@/components/ui';
 
 export default function WorkflowDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams<{ id: string }>()!;
   const router = useRouter();
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [executions, setExecutions] = useState<Execution[]>([]);

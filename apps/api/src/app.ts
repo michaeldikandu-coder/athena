@@ -18,6 +18,8 @@ import appRoutes from './routes/apps.routes';
 import webhookRoutes from './routes/webhooks.routes';
 import eventRoutes from './routes/events.routes';
 import connectionRoutes from './routes/connections.routes';
+import realtimeRoutes from './routes/realtime.routes';
+import internalRoutes from './routes/internal.routes';
 import { withConnections } from './middleware/user-scope';
 
 export function createApp(): Express {
@@ -49,7 +51,14 @@ export function createApp(): Express {
 
   app.use(
     '/api',
-    rateLimit({ windowMs: 60 * 1000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false })
+    rateLimit({
+      windowMs: 60 * 1000,
+      limit: 300,
+      standardHeaders: 'draft-7',
+      legacyHeaders: false,
+      // Signed platform calls (run continuations, cron) are not user traffic
+      skip: (req) => req.originalUrl.startsWith('/api/internal/'),
+    })
   );
 
   app.get('/api/health', (_req, res) => {
@@ -62,6 +71,7 @@ export function createApp(): Express {
   // Public
   app.use('/api/auth', authRoutes);
   app.use('/api/webhooks', webhookRoutes);
+  app.use('/api/internal', internalRoutes);
 
   // Authenticated
   app.use('/api/agents', requireAuth, agentRoutes);
@@ -72,6 +82,7 @@ export function createApp(): Express {
   app.use('/api/apps', requireAuth, withConnections, appRoutes);
   app.use('/api/connections', requireAuth, connectionRoutes);
   app.use('/api/events', requireAuth, eventRoutes);
+  app.use('/api/realtime', requireAuth, realtimeRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
