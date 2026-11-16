@@ -45,4 +45,4 @@ Show an automatic trigger: re-run a failing GitHub Action, or `bachs trigger col
 
 "Two different domains, one runtime, one approval queue, one audit trail. A new application is a tools file and a prompt."
 
-Mention Kiro: the spec (`athena-spec.md`), steering files in `.kiro/steering`, and the task breakdown in `docs/specs`.
+Mention Kiro: the spec in `.kiro/specs/athena` (requirements, design, tasks, plus its history), and the steering files in `.kiro/steering`.

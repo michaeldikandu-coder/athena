@@ -147,5 +147,10 @@ See [docs/deployment.md](docs/deployment.md) for deployment and [docs/demo/demo-
 - A run interrupted mid tool call repeats that call when it resumes; tools that change things (refunds) use idempotency keys.
 - No automated test suite is checked in yet.
 
-Built with [Kiro](https://kiro.dev) for the Kiro Skeleton Crew hackathon.
+## Built with Kiro
+
+- Spec: [`.kiro/specs/athena`](.kiro/specs/athena) ([requirements](.kiro/specs/athena/requirements.md), [design](.kiro/specs/athena/design.md), [tasks](.kiro/specs/athena/tasks.md); earlier versions in `history/`)
+- Steering: [`.kiro/steering`](.kiro/steering) (project conventions, agent development)
+
+Built with [Kiro](https://kiro.dev) for the Kiroween hackathon (Skeleton Crew).
 # athena
