@@ -2,12 +2,16 @@
 
 **One skeleton, many agents.**
 
+Live demo: https://athena-kappa-orcin.vercel.app · License: [MIT](LICENSE) · Built with [Kiro](https://kiro.dev) for Kiroween 2026 (Skeleton Crew)
+
 Athena is a reusable AI agent runtime. Applications plug into it as configuration (an agent template, tools, and workflow templates) and never ship their own execution logic. Two applications demonstrate it:
 
 - **MoneyGuard** investigates failed, suspicious, underpaid, and disputed [Bachs](https://bachs.io) payments, scores them against risk rules, opens cases, and flags customers or refunds payments after a human approves.
 - **OpsGuard** checks live service health, reads logs, inspects GitHub Actions failures, opens and updates incident tickets (GitHub Issues), and re-runs failed deployments after approval.
 
 Both run on the same agent loop, tool registry, permission checks, approval queue, memory, workflow engine, and execution monitor. They also share one tool implementation: `send_notification` (Slack).
+
+Beyond the two apps, anyone can build their own agents in the dashboard: start from a template, pick tools (permissions follow automatically), choose when it runs, and turn any HTTP API into a tool.
 
 ## Architecture
 
@@ -59,11 +63,11 @@ Requirements: Node.js 20+, npm 10+, MongoDB 6+ (local or Atlas), and an Anthropi
 
 ```bash
 npm install
-cp .env.example .env        # fill in MONGODB_URI, JWT_SECRET, an LLM key, and integration keys
+cp .env.example .env        # fill in MONGODB_URI, the secrets, and GROQ_API_KEY (free) or ANTHROPIC_API_KEY
 npm run dev                 # dashboard and API together on :3000
 ```
 
-Open http://localhost:3000, create an account (the first account is admin), go to **Applications**, and install MoneyGuard and/or OpsGuard.
+Open http://localhost:3000 and create an account (the first account is admin). The **Get started** checklist on the overview walks you through the rest: connect an account, install MoneyGuard or OpsGuard, run a first investigation, and make your own agent.
 
 ### Connecting accounts
 
@@ -86,6 +90,13 @@ bachs listen --forward-to localhost:3000/api/webhooks/bachs/<your-token> --event
 ```
 
 Bachs money is a decimal string with a currency (`"75000.00"` NGN), never minor units. Payments carry the customer's name and email but no customer id, so MoneyGuard finds the customer and their history by email. Large-payment thresholds are per currency (`MONEYGUARD_LARGE_AMOUNTS`).
+
+### Building your own agents (no code)
+
+- **Templates** (Build > Agents > Create an agent): Refund Reviewer, Dispute Responder, Daily Ops Digest, Deploy Guard, Uptime Alert Handler, or a blank agent. Templates that start on their own also create their workflow.
+- **Permissions follow the tools** you tick. Model, iterations, memory and extra permissions are under *Advanced*.
+- **Workflows** (Build > Workflows): choose *when* (click Run, a schedule, a Bachs or GitHub event, or a signed webhook), *what* the agent should do, and optionally *ask me first*. The JSON editor is still available for branching steps.
+- **Custom tools** (Build > Custom tools): describe one HTTP request, e.g. `GET https://api.example.com/orders/{orderId}`, with inputs, headers and one encrypted secret header, and try it with a real request. Custom tools belong to their creator. In production they cannot reach private addresses, never follow redirects, time out after 15 s and read at most 1 MB. POST, PUT, PATCH and DELETE tools need `write:http` and ask for approval by default.
 
 ### Custom webhooks
 
@@ -110,11 +121,12 @@ export const myApp: AthenaApplication = {
   tools: [myTool, sendNotificationTool],   // Tool objects with Zod schemas
   agent: { name, description, systemPrompt, permissions, tools: ['my_tool', 'send_notification'] },
   workflows: [/* WorkflowTemplate[] */],
-  env: [{ name: 'MYAPP_API_KEY', description: '…' }],
+  connections: [{ provider: 'github', description: '…' }],   // per-user services it needs
+  env: [],                                                     // optional server-only settings
 };
 ```
 
-Register it in `apps/api/src/index.ts` with `registerApplication(myApp)`. It then appears in the dashboard and can be installed.
+Register it in `apps/api/src/bootstrap.ts` with `registerApplication(myApp)`. It then appears in the dashboard and can be installed. Tools that need a user's account read it with `requireConnection(provider)` from `@athena/shared`.
 
 ## Security
 
@@ -123,7 +135,8 @@ Register it in `apps/api/src/index.ts` with `registerApplication(myApp)`. It the
 - Tools declare required permissions; the runtime denies calls the agent is not granted.
 - `permissionLevel: 'high'` tools always need human approval. Approvals are owner-only, single-use, and expire after 30 minutes.
 - Webhooks are verified (Bachs `X-Bachs-Signature-V2` with timestamp tolerance and secret rotation, GitHub HMAC, per-workflow HMAC) and de-duplicated.
-- OpsGuard can only reach configured URLs (no redirects) and read configured log files.
+- Users' keys (Bachs, GitHub, Slack, custom tool secrets) are encrypted with AES-256-GCM and only shown as masked hints; a run only uses its owner's keys.
+- OpsGuard and custom tools only reach URLs the user listed, without redirects, and refuse private and cloud-metadata addresses in production. OpsGuard reads only log files the operator listed.
 - Refunds and customer flags send idempotency keys, and refunds check for an existing refund first (Bachs allows one per charge). Bank-transfer sender account numbers are masked before the agent sees them.
 - The logger redacts keys containing password, token, secret, apikey, authorization, or cookie.
 
@@ -138,19 +151,21 @@ Register it in `apps/api/src/index.ts` with `registerApplication(myApp)`. It the
 | `npm run dev:api` / `npm run start:api` | API alone as a long-lived Node server (:3001) |
 | `npm run type-check` / `npm run lint` | Checks |
 
-See [docs/deployment.md](docs/deployment.md) for deployment and [docs/demo/demo-script.md](docs/demo/demo-script.md) for the demo walkthrough.
+See [docs/deployment.md](docs/deployment.md) for deployment, [docs/athena-overview.md](docs/athena-overview.md) for the project overview and demo script, and [docs/demo/demo-script.md](docs/demo/demo-script.md) for the longer demo walkthrough.
 
 ## Known limitations
 
 - Live updates poll every 2.5 seconds instead of streaming.
 - On Vercel Hobby, scheduled workflows only run as often as the dashboard is open or a cron calls the tick (see docs/deployment.md).
 - A run interrupted mid tool call repeats that call when it resumes; tools that change things (refunds) use idempotency keys.
-- No automated test suite is checked in yet.
+- No automated test suite is checked in yet; the features were verified with scripted end-to-end checks during development.
 
 ## Built with Kiro
 
 - Spec: [`.kiro/specs/athena`](.kiro/specs/athena) ([requirements](.kiro/specs/athena/requirements.md), [design](.kiro/specs/athena/design.md), [tasks](.kiro/specs/athena/tasks.md); earlier versions in `history/`)
 - Steering: [`.kiro/steering`](.kiro/steering) (project conventions, agent development)
+- Hooks: [`.kiro/hooks`](.kiro/hooks): type-check on save, confirm before editing secrets files, keep the spec in sync after each task
 
-Built with [Kiro](https://kiro.dev) for the Kiroween hackathon (Skeleton Crew).
-# athena
+## License
+
+[MIT](LICENSE)
