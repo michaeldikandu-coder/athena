@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Keep the spec in sync after a task",
+      "trigger": "PostTaskExec",
+      "description": "After a spec task finishes, Kiro type-checks the project and updates the spec files so they keep matching the code.",
+      "action": {
+        "type": "agent",
+        "prompt": "A spec task was just completed. Before moving on: (1) run `npm run type-check` and fix any errors; (2) make sure `.kiro/specs/athena/tasks.md` marks the task done and lists any follow-up work you found; (3) if the change altered behaviour described in `requirements.md` or `design.md`, update those files so the spec still matches the code."
+      }
+    }
+  ]
+}

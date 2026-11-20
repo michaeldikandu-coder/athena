@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Type-check on save",
+      "trigger": "PostFileSave",
+      "description": "Runs the TypeScript checks for all packages and the dashboard whenever a .ts or .tsx file is saved, so type errors show up immediately.",
+      "matcher": "\\.(ts|tsx)$",
+      "action": {
+        "type": "command",
+        "command": "npm run type-check --silent 2>&1 | tail -20",
+        "timeout": 120
+      }
+    }
+  ]
+}
